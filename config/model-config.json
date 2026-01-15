@@ -1,0 +1,56 @@
+{
+  "models": {
+    "UD-Q2_K_XL": {
+      "name": "GLM-4.7-UD-Q2_K_XL",
+      "repo": "unsloth/GLM-4.7-UD-Q2_K_XL",
+      "size_gb": 135,
+      "min_ram_gb": 128,
+      "min_vram_gb": 24,
+      "description": "2-bit quantizado, melhor qualidade, requer hardware potente"
+    },
+    "Q4_K_M": {
+      "name": "GLM-4.7-Q4_K_M",
+      "repo": "bartowski/zai-org_GLM-4.7-GGUF",
+      "file": "GLM-4.7-Q4_K_M.gguf",
+      "size_gb": 200,
+      "min_ram_gb": 64,
+      "min_vram_gb": 16,
+      "description": "4-bit médio, bom equilíbrio qualidade/performance"
+    },
+    "Q4_K_S": {
+      "name": "GLM-4.7-Q4_K_S",
+      "repo": "bartowski/zai-org_GLM-4.7-GGUF",
+      "file": "GLM-4.7-Q4_K_S.gguf",
+      "size_gb": 180,
+      "min_ram_gb": 48,
+      "min_vram_gb": 12,
+      "description": "4-bit pequeno, ideal para hardware limitado"
+    },
+    "Q5_K_M": {
+      "name": "GLM-4.7-Q5_K_M",
+      "repo": "bartowski/zai-org_GLM-4.7-GGUF",
+      "file": "GLM-4.7-Q5_K_M.gguf",
+      "size_gb": 240,
+      "min_ram_gb": 80,
+      "min_vram_gb": 20,
+      "description": "5-bit médio, melhor qualidade que Q4"
+    }
+  },
+  "default_settings": {
+    "temperature": 1.0,
+    "top_p": 0.95,
+    "top_k": 40,
+    "repeat_penalty": 1.1,
+    "ctx_size": 4096,
+    "threads": 4,
+    "gpu_layers": 0
+  },
+  "low_resource_settings": {
+    "temperature": 1.0,
+    "top_p": 0.95,
+    "ctx_size": 2048,
+    "threads": 2,
+    "gpu_layers": 0,
+    "cpu_offload": true
+  }
+}

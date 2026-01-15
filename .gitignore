@@ -1,0 +1,44 @@
+# Modelos (muito grandes para git)
+models/
+*.gguf
+*.bin
+*.safetensors
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# llama.cpp build
+llama.cpp/build/
+llama.cpp/bin/
+
+# Configurações locais
+config/hardware-config.local.yaml
+*.local.*
+
+# Logs
+*.log
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporários
+*.tmp
+*.temp
+Modelfile

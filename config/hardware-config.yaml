@@ -1,0 +1,38 @@
+# Configuração de Hardware
+# Ajuste estes valores conforme sua máquina
+
+hardware:
+  # Configurações de GPU
+  gpu:
+    available: false  # Mude para true se tiver GPU NVIDIA
+    vram_gb: 0        # VRAM disponível em GB (ex: 8, 16, 24)
+    cuda_arch: "75"   # Arquitetura CUDA (75=RTX 20xx, 80=RTX 30xx, 89=RTX 40xx)
+    # Para descobrir sua arquitetura: https://developer.nvidia.com/cuda-gpus
+  
+  # Configurações de CPU
+  cpu:
+    cores: 4          # Número de cores físicos
+    threads: 8        # Número de threads (cores lógicos)
+  
+  # Configurações de RAM
+  ram_gb: 32          # RAM total disponível em GB
+  
+  # Espaço em disco
+  disk_space_gb: 500  # Espaço livre em disco (GB)
+  
+  # Sistema Operacional
+  os: "windows"       # windows, linux, macos
+
+# Configurações automáticas baseadas no hardware
+auto_config:
+  # Versão de modelo recomendada baseada no hardware
+  recommended_model: "Q4_K_S"  # Será ajustado automaticamente
+  
+  # Número de camadas GPU recomendado
+  recommended_gpu_layers: 0    # Será ajustado automaticamente
+  
+  # Tamanho de contexto recomendado
+  recommended_ctx_size: 4096   # Será ajustado automaticamente
+  
+  # Número de threads recomendado
+  recommended_threads: 4       # Será ajustado automaticamente

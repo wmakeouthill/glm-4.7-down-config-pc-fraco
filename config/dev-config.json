@@ -1,0 +1,45 @@
+{
+  "development_optimized": {
+    "description": "Configurações otimizadas para desenvolvimento e codificação",
+    "settings": {
+      "temperature": 0.7,
+      "top_p": 0.95,
+      "top_k": 40,
+      "repeat_penalty": 1.1,
+      "ctx_size": 4096,
+      "threads": 6,
+      "gpu_layers": 6,
+      "cpu_offload": true,
+      "notes": [
+        "Temperatura reduzida (0.7) para código mais determinístico",
+        "Contexto de 4096 tokens suficiente para arquivos de código",
+        "6 camadas GPU + offload CPU para otimizar 8GB VRAM",
+        "6 threads CPU aproveitando os 12 threads do Ryzen 5 5600X"
+      ]
+    },
+    "recommended_model": "Q4_K_S",
+    "hardware_requirements": {
+      "min_ram_gb": 32,
+      "min_vram_gb": 8,
+      "cpu_cores": 6,
+      "cpu_threads": 12
+    }
+  },
+  "usage_tips": {
+    "code_generation": {
+      "temperature": 0.5,
+      "top_p": 0.9,
+      "description": "Para geração de código mais precisa"
+    },
+    "code_explanation": {
+      "temperature": 0.8,
+      "top_p": 0.95,
+      "description": "Para explicações mais criativas"
+    },
+    "code_review": {
+      "temperature": 0.6,
+      "top_p": 0.9,
+      "description": "Para revisão técnica balanceada"
+    }
+  }
+}
