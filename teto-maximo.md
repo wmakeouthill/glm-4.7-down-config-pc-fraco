@@ -4,51 +4,90 @@
 
 ---
 
-## Por que o contexto e limitado pela VRAM?
+## Como a VRAM e consumida
 
-O modelo pesa ~17 GB. Com 12 layers na GPU, ocupa ~5.6 GB de VRAM.
-
-**Conta real de VRAM disponivel:**
+Ao rodar um modelo local, a VRAM e ocupada por tres coisas ao mesmo tempo:
 
 ```
-8.0 GB  VRAM total da RTX 4060
-- 0.5 GB  overhead Windows/driver/WDDM (sempre reservado)
-= 7.5 GB  disponivel de fato
-- X GB    modelo (layers na GPU)
-- Y GB    KV cache (cresce com cada token gerado durante a conversa)
+[  overhead Windows/driver ~0.5 GB  ]
+[  modelo (layers na GPU)           ]  <- fixo, definido por -GpuLayers
+[  KV cache                         ]  <- cresce conforme a conversa avanca
 ```
 
-O KV cache NAO e fixo - ele cresce conforme a conversa avanca.
-Com 32K de contexto e q8_0, chega a ~1.1 GB ao encher o contexto todo.
-Por isso nunca preencher 100% da VRAM so com o modelo.
+Se a soma das tres ultrapassar 8 GB, o programa trava com erro OOM (Out of Memory).
+
+### Por que o KV cache cresce durante a conversa?
+
+O modelo precisa "lembrar" de cada token anterior para gerar o proximo.
+Essa memoria e o KV cache (Key-Value cache). A cada token gerado, ele cresce:
+
+```
+KV cache = tokens gerados x layers x tamanho por layer
+```
+
+Com -CtxSize 32768 e q8_0, o KV cache pode chegar a ~1.1 GB quando o contexto
+encher completamente. Por isso nao da pra usar 100% da VRAM so com o modelo.
 
 ---
 
-## As tecnicas para maximizar contexto
+## Por que -Threads 6 e nao 12?
 
-### 1. KV Cache Quantizado (-KvCache)
+O Ryzen 5 5600X tem 6 nucleos fisicos e 12 threads logicos (Hyperthreading).
+Para inferencia de LLM, o gargalo e memoria, nao computacao.
 
-Quantiza so o cache de atencao (K e V), nao o modelo em si. O modelo continua Q4_K_M.
-
-| Modo   | KB por token | Reducao | Qualidade                     |
-|--------|-------------|---------|-------------------------------|
-| fp16   | 72 KB       | 1x      | referencia                    |
-| q8_0   | 36 KB       | 2x      | imperceptivel                 |
-| q4_0   | 18 KB       | 4x      | leve em conversas >50K tokens |
-
-### 2. Flash Attention (-FlashAttn on)
-
-Reformula o calculo de atencao para usar memoria de forma mais eficiente durante a geracao.
-Sem custo de qualidade. Sempre usar junto com KV quantizado.
+Usar 12 threads faz os nucleos competirem pela mesma banda de memoria RAM,
+aumentando latencia e reduzindo tokens/segundo. 6 threads (um por nucleo fisico)
+da throughput melhor na pratica.
 
 ---
 
-## Comandos prontos (layers corrigidos com overhead do Windows)
+## Por que layer tem esse tamanho (~470 MB)?
+
+O modelo Q4_K_M tem 17 GB no total, distribuidos em ~36 layers de transformer.
+
+```
+17 GB / 36 layers = ~472 MB por layer
+```
+
+Cada layer contem as matrizes de pesos de atencao e FFN daquela camada.
+Layers na GPU rodam em paralelo nos CUDA cores (rapido).
+Layers na RAM rodam na CPU (mais lento, mas funciona).
+
+---
+
+## O que e KV cache quantizado?
+
+O KV cache armazena vetores de atencao em ponto flutuante. Por padrao usa fp16
+(16 bits por valor). Quantizar reduz isso:
+
+| Modo | Bits | KB por token | Por que funciona                              |
+|------|------|-------------|-----------------------------------------------|
+| fp16 | 16   | 72 KB       | precisao maxima, referencia                   |
+| q8_0 | 8   | 36 KB       | erro < 0.1%, imperceptivel na pratica         |
+| q4_0 | 4   | 18 KB       | erro pequeno, visivel so em contextos >50K    |
+
+O modelo em si nao e afetado - ele continua Q4_K_M.
+So os vetores temporarios de atencao sao quantizados.
+
+---
+
+## O que e Flash Attention?
+
+O calculo padrao de atencao precisa materializar uma matriz de tamanho
+(ctx x ctx) na VRAM durante a geracao. Para 32K de contexto isso e enorme.
+
+Flash Attention reformula o calculo em blocos menores que cabem no cache
+do chip, sem nunca materializar a matriz inteira. Resultado: menos VRAM
+usada nos picos de computacao, sem nenhuma perda de qualidade.
+
+---
+
+## Comandos prontos
 
 ### 32K - KV q8_0 + Flash Attention (recomendado para uso geral)
 
-Melhor custo-beneficio. Sem perda de qualidade perceptivel.
-Contexto para arquivos grandes, documentos longos, conversas estendidas.
+14 layers = ~6.6 GB de modelo. Sobram ~0.9 GB para KV cache apos overhead.
+Com q8_0, o KV cache de 32K cabe em ~1.1 GB -> margem suficiente durante uso normal.
 
 ```powershell
 .\scripts\run-llamacpp.ps1 `
@@ -62,7 +101,8 @@ Contexto para arquivos grandes, documentos longos, conversas estendidas.
 
 ### 48K - KV q8_0 + Flash Attention
 
-Para projetos maiores. Ainda sem degradacao de qualidade com q8_0.
+Reduzido para 12 layers (~5.6 GB) porque 48K de contexto com q8_0
+consome ~1.6 GB de KV ao encher. Precisa de mais margem.
 
 ```powershell
 .\scripts\run-llamacpp.ps1 `
@@ -76,8 +116,8 @@ Para projetos maiores. Ainda sem degradacao de qualidade com q8_0.
 
 ### 64K - KV q4_0 + Flash Attention
 
-Contexto de 64K tokens (~48K palavras). Leve degradacao em conversas muito longas,
-imperceptivel ate ~50K tokens. q4_0 compensa bem a reducao de layers.
+Volta para 14 layers porque q4_0 corta o KV cache pela metade em relacao ao q8_0.
+64K com q4_0 = ~1.1 GB de KV, mesma margem do preset de 32K q8_0.
 
 ```powershell
 .\scripts\run-llamacpp.ps1 `
@@ -91,8 +131,8 @@ imperceptivel ate ~50K tokens. q4_0 compensa bem a reducao de layers.
 
 ### 96K - KV q4_0 + Flash Attention (teto absoluto)
 
-Maximo que a VRAM suporta com seguranca. Para codebases inteiras, livros, transcricoes longas.
-Se degradar qualidade no final da conversa, prefira o de 64K.
+12 layers pela mesma logica do 48K q8_0: contexto gigante precisa de margem maior.
+96K com q4_0 = ~1.6 GB de KV ao encher completamente.
 
 ```powershell
 .\scripts\run-llamacpp.ps1 `
@@ -106,31 +146,47 @@ Se degradar qualidade no final da conversa, prefira o de 64K.
 
 ---
 
-## Tabela comparativa (corrigida)
+## Tabela comparativa
 
-| Preset     | CtxSize | KV Cache | GPU Layers | VRAM modelo | +KV cheio | Total estimado | Uso ideal                       |
-|------------|---------|----------|-----------|-------------|-----------|----------------|---------------------------------|
-| 32K q8     | 32 768  | q8_0     | 14        | ~5.9 GB     | ~1.1 GB   | ~7.0 GB        | uso geral, recomendado          |
-| 48K q8     | 49 152  | q8_0     | 12        | ~5.1 GB     | ~1.6 GB   | ~6.7 GB        | documentos e projetos grandes   |
-| 64K q4     | 65 536  | q4_0     | 14        | ~5.9 GB     | ~1.1 GB   | ~7.0 GB        | codebases, livros, transcricoes |
-| 96K q4     | 98 304  | q4_0     | 12        | ~5.1 GB     | ~1.6 GB   | ~6.7 GB        | teto absoluto, arquivos imensos |
+| Preset  | Layers | Modelo GPU | KV cheio | Total+overhead | Margem |
+|---------|--------|-----------|---------|----------------|--------|
+| 32K q8  | 14     | ~6.6 GB   | ~1.1 GB | ~8.2 GB        | ok*    |
+| 48K q8  | 12     | ~5.6 GB   | ~1.6 GB | ~7.7 GB        | ok     |
+| 64K q4  | 14     | ~6.6 GB   | ~1.1 GB | ~8.2 GB        | ok*    |
+| 96K q4  | 12     | ~5.6 GB   | ~1.6 GB | ~7.7 GB        | ok     |
 
-Todos os presets deixam ~0.5-1.0 GB de margem apos o overhead do Windows (~0.5 GB).
+*O KV cache so chega ao maximo se voce usar o contexto inteiro.
+Na pratica conversas normais usam bem menos tokens.
+
+---
+
+## Regra geral para calcular seus proprios presets
+
+```
+VRAM disponivel = 8.0 GB - 0.5 GB (overhead) = 7.5 GB
+VRAM para modelo = layers x 472 MB
+VRAM para KV     = CtxSize x (72 KB se fp16 / 36 KB se q8_0 / 18 KB se q4_0)
+                   dividido por 36 (total de layers) x layers na GPU
+
+Soma deve ficar abaixo de 7.5 GB com folga de pelo menos 0.5 GB.
+```
 
 ---
 
 ## Se der OOM
 
 Reduza -GpuLayers em 2 e tente de novo. O modelo continua funcionando,
-so mais lento (mais layers rodando na RAM). A qualidade de resposta nao muda.
+so mais lento (as layers extras rodam na RAM pelo CPU).
+A qualidade das respostas nao muda, so a velocidade de geracao.
 
 ---
 
 ## Referencia de flags
 
-| Flag         | Valores aceitos                  | O que faz                              |
-|--------------|----------------------------------|----------------------------------------|
-| -KvCache     | q8_0, q4_0, q4_1, q5_0          | Quantiza KV cache para reduzir VRAM    |
-| -FlashAttn   | switch (sem valor)               | Flash Attention - menos memoria        |
-| -GpuLayers   | numero inteiro                   | Quantas layers do modelo vao pra GPU   |
-| -CtxSize     | numero inteiro                   | Tamanho maximo do contexto em tokens   |
+| Flag       | Valores aceitos         | O que faz                            |
+|------------|------------------------|--------------------------------------|
+| -KvCache   | q8_0, q4_0, q4_1, q5_0 | Quantiza KV cache para reduzir VRAM |
+| -FlashAttn | switch (sem valor)      | Flash Attention - menos picos VRAM  |
+| -GpuLayers | numero inteiro          | Layers do modelo carregadas na GPU   |
+| -CtxSize   | numero inteiro          | Limite maximo de tokens no contexto  |
+| -Threads   | numero inteiro          | Nucleos fisicos usados na CPU        |

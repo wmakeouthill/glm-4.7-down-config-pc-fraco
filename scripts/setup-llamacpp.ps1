@@ -11,10 +11,22 @@ Write-Host "Setup llama.cpp (CUDA/Windows)" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-if (Test-Path (Join-Path $targetDir "llama-cli.exe")) {
-    Write-Host "llama-cli.exe ja encontrado em: $targetDir" -ForegroundColor Green
+$hasExe    = Test-Path (Join-Path $targetDir "llama-cli.exe")
+$hasCudart = Test-Path (Join-Path $targetDir "cudart64_12.dll")
+
+if ($hasExe -and $hasCudart) {
+    Write-Host "llama-cli.exe e cudart ja encontrados em: $targetDir" -ForegroundColor Green
     Write-Host "Para reinstalar, delete a pasta llama.cpp\ e rode novamente." -ForegroundColor Gray
     exit 0
+}
+
+if ($hasExe -and -not $hasCudart) {
+    Write-Host "llama-cli.exe encontrado mas cudart64_12.dll ausente." -ForegroundColor Yellow
+    Write-Host "Baixando apenas o pacote cudart (runtime CUDA)..." -ForegroundColor Yellow
+    Write-Host ""
+    $onlyCudart = $true
+} else {
+    $onlyCudart = $false
 }
 
 Write-Host "Buscando ultima versao no GitHub..." -ForegroundColor Yellow
@@ -88,7 +100,9 @@ function Install-Asset {
     Write-Host ""
 }
 
-Install-Asset -Asset $assetMain -Label "binarios"
+if (-not $onlyCudart) {
+    Install-Asset -Asset $assetMain -Label "binarios"
+}
 
 if ($assetCudart) {
     Install-Asset -Asset $assetCudart -Label "cudart"
