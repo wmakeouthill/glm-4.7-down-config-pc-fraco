@@ -1,5 +1,6 @@
 # Baixa o build pre-compilado do llama.cpp com suporte CUDA para Windows
 # Funciona com RTX 4060 (CUDA 12.x)
+# Requer DOIS pacotes: binarios principais + cudart (runtime CUDA)
 
 $ErrorActionPreference = "Stop"
 
@@ -28,83 +29,90 @@ try {
 
 $version = $release.tag_name
 Write-Host "Versao encontrada: $version" -ForegroundColor Green
+Write-Host ""
 
-# Encontrar asset correto: binario principal (llama-bXXXX-bin-win-cuda/cublas-*-x64.zip)
-# Excluir pacotes "cudart-*" que sao so DLLs de runtime, nao os executaveis
-$asset = $release.assets | Where-Object {
-    $_.name -match "^llama-" -and
+# --- Pacote 1: binarios principais (llama-bXXXX-bin-win-cuda-*-x64.zip) ---
+$assetMain = $release.assets | Where-Object {
+    $_.name -match "^llama-b" -and
     $_.name -match "bin-win" -and
     $_.name -match "x64" -and
     $_.name -match "cuda|cublas" -and
-    $_.name -notmatch "^cudart" -and
     $_.name -match "\.zip$"
-} | Sort-Object { $_.name -match "cuda" } -Descending | Select-Object -First 1
+} | Select-Object -First 1
 
-if (-not $asset) {
-    # Fallback: qualquer zip win x64 que nao seja cudart
-    $asset = $release.assets | Where-Object {
-        $_.name -match "^llama-" -and
-        $_.name -match "win" -and
-        $_.name -match "x64" -and
-        $_.name -notmatch "^cudart" -and
-        $_.name -match "\.zip$"
-    } | Select-Object -First 1
-}
-
-if (-not $asset) {
-    Write-Host "" -ForegroundColor Red
-    Write-Host "Nao foi possivel encontrar build CUDA automaticamente." -ForegroundColor Red
-    Write-Host "Baixe manualmente em: https://github.com/ggerganov/llama.cpp/releases/latest" -ForegroundColor Yellow
-    Write-Host "Procure por: llama-*-bin-win-cuda-cu12*-x64.zip" -ForegroundColor Yellow
-    Write-Host "Extraia os .exe para: $targetDir" -ForegroundColor Yellow
+if (-not $assetMain) {
+    Write-Host "Nao foi possivel encontrar o pacote de binarios CUDA." -ForegroundColor Red
+    Write-Host "Baixe manualmente: https://github.com/ggerganov/llama.cpp/releases/latest" -ForegroundColor Yellow
+    Write-Host "Arquivo: llama-*-bin-win-cuda-*-x64.zip" -ForegroundColor Yellow
     exit 1
 }
 
-Write-Host "Asset: $($asset.name)" -ForegroundColor Gray
-Write-Host "Tamanho: $([math]::Round($asset.size / 1MB, 1)) MB" -ForegroundColor Gray
-Write-Host ""
-
-$tempZip = Join-Path $env:TEMP "llama-cpp-cuda.zip"
-$tempExtract = Join-Path $env:TEMP "llama-cpp-extract"
-
-Write-Host "Baixando..." -ForegroundColor Yellow
-try {
-    Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $tempZip -UseBasicParsing
-} catch {
-    Write-Host "Erro no download: $($_.Exception.Message)" -ForegroundColor Red
-    exit 1
-}
-
-Write-Host "Extraindo..." -ForegroundColor Yellow
-
-if (Test-Path $tempExtract) {
-    Remove-Item $tempExtract -Recurse -Force
-}
-Expand-Archive -Path $tempZip -DestinationPath $tempExtract -Force
+# --- Pacote 2: cudart (DLLs do runtime CUDA - obrigatorio para GPU funcionar) ---
+$assetCudart = $release.assets | Where-Object {
+    $_.name -match "^cudart-" -and
+    $_.name -match "win" -and
+    $_.name -match "x64" -and
+    $_.name -match "\.zip$"
+} | Select-Object -First 1
 
 # Criar diretorio de destino
 if (-not (Test-Path $targetDir)) {
     New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
 }
 
-# Copiar todos os .exe e .dll para o destino
-$exes = Get-ChildItem -Path $tempExtract -Recurse -Include "*.exe", "*.dll"
-foreach ($file in $exes) {
-    Copy-Item $file.FullName -Destination $targetDir -Force
+function Install-Asset {
+    param($Asset, $Label)
+
+    $tempZip = Join-Path $env:TEMP "llama-$Label.zip"
+    $tempExtract = Join-Path $env:TEMP "llama-$Label-extract"
+
+    Write-Host "[$Label] $($Asset.name)" -ForegroundColor Gray
+    Write-Host "[$Label] Tamanho: $([math]::Round($Asset.size / 1MB, 1)) MB" -ForegroundColor Gray
+    Write-Host "[$Label] Baixando..." -ForegroundColor Yellow
+
+    Invoke-WebRequest -Uri $Asset.browser_download_url -OutFile $tempZip -UseBasicParsing
+
+    Write-Host "[$Label] Extraindo..." -ForegroundColor Yellow
+    if (Test-Path $tempExtract) { Remove-Item $tempExtract -Recurse -Force }
+    Expand-Archive -Path $tempZip -DestinationPath $tempExtract -Force
+
+    $files = Get-ChildItem -Path $tempExtract -Recurse -Include "*.exe", "*.dll"
+    foreach ($file in $files) {
+        Copy-Item $file.FullName -Destination $targetDir -Force
+    }
+
+    Remove-Item $tempZip -Force -ErrorAction SilentlyContinue
+    Remove-Item $tempExtract -Recurse -Force -ErrorAction SilentlyContinue
+
+    Write-Host "[$Label] OK" -ForegroundColor Green
+    Write-Host ""
 }
 
-# Limpar temporarios
-Remove-Item $tempZip -Force -ErrorAction SilentlyContinue
-Remove-Item $tempExtract -Recurse -Force -ErrorAction SilentlyContinue
+Install-Asset -Asset $assetMain -Label "binarios"
 
-Write-Host ""
+if ($assetCudart) {
+    Install-Asset -Asset $assetCudart -Label "cudart"
+} else {
+    Write-Host "[cudart] Pacote nao encontrado na release - GPU pode nao funcionar." -ForegroundColor Yellow
+    Write-Host "[cudart] Se a GPU nao carregar, instale o CUDA Toolkit 12.x:" -ForegroundColor Yellow
+    Write-Host "         https://developer.nvidia.com/cuda-downloads" -ForegroundColor Gray
+    Write-Host ""
+}
+
 if (Test-Path (Join-Path $targetDir "llama-cli.exe")) {
     Write-Host "[OK] llama-cli.exe instalado em: $targetDir" -ForegroundColor Green
+
+    $hasCuda = Test-Path (Join-Path $targetDir "ggml-cuda.dll")
+    if ($hasCuda) {
+        Write-Host "[OK] ggml-cuda.dll presente - GPU ativa" -ForegroundColor Green
+    } else {
+        Write-Host "[AVISO] ggml-cuda.dll nao encontrado - GPU pode nao carregar" -ForegroundColor Yellow
+    }
+
     Write-Host ""
-    Write-Host "Pronto para rodar o modelo:" -ForegroundColor Yellow
+    Write-Host "Pronto para rodar:" -ForegroundColor Yellow
     Write-Host "  .\scripts\run-llamacpp.ps1 -ModelVersion QWEN3_6_27B_Q4_K_M -GpuLayers 16 -Threads 6 -CtxSize 32768 -KvCache q8_0 -FlashAttn" -ForegroundColor White
 } else {
-    Write-Host "[AVISO] llama-cli.exe nao encontrado apos extracao." -ForegroundColor Red
-    Write-Host "Verifique o conteudo extraido e copie os .exe para: $targetDir" -ForegroundColor Yellow
+    Write-Host "[ERRO] llama-cli.exe nao encontrado apos extracao." -ForegroundColor Red
 }
 Write-Host ""
