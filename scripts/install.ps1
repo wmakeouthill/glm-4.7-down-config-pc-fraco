@@ -1,4 +1,4 @@
-# Script de Instalação GLM-4.7 para Windows
+# Script de Instalação Qwen3.6-27B para Windows
 # Este script instala todas as dependências necessárias
 
 param(
@@ -9,7 +9,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "Instalação GLM-4.7 - Windows" -ForegroundColor Cyan
+Write-Host "Instalação Qwen3.6-27B - Windows" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -105,6 +105,6 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Próximos passos:" -ForegroundColor Yellow
 Write-Host "  1. Configure seu hardware em: config/hardware-config.yaml" -ForegroundColor White
-Write-Host "  2. Baixe um modelo: .\scripts\download-model.ps1 -Version Q4_K_S" -ForegroundColor White
+Write-Host "  2. Baixe um modelo: .\scripts\download-model.ps1 -Version QWEN3_6_27B_Q4_K_M" -ForegroundColor White
 Write-Host "  3. Execute o modelo: .\scripts\run-llamacpp.ps1" -ForegroundColor White
 Write-Host ""

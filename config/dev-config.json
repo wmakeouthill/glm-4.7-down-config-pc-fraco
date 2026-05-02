@@ -1,45 +1,77 @@
 {
-  "development_optimized": {
-    "description": "Configurações otimizadas para desenvolvimento e codificação",
-    "settings": {
-      "temperature": 0.7,
-      "top_p": 0.95,
-      "top_k": 40,
-      "repeat_penalty": 1.1,
-      "ctx_size": 4096,
-      "threads": 6,
-      "gpu_layers": 6,
-      "cpu_offload": true,
-      "notes": [
-        "Temperatura reduzida (0.7) para código mais determinístico",
-        "Contexto de 4096 tokens suficiente para arquivos de código",
-        "6 camadas GPU + offload CPU para otimizar 8GB VRAM",
-        "6 threads CPU aproveitando os 12 threads do Ryzen 5 5600X"
-      ]
+  "profiles": {
+    "Q4_K_M_4K": {
+      "description": "Qwen3.6 27B Q4_K_M com contexto 4K (equilibrio)",
+      "model_key": "QWEN3_6_27B_Q4_K_M",
+      "settings": {
+        "temperature": 0.6,
+        "top_p": 0.95,
+        "top_k": 40,
+        "repeat_penalty": 1.1,
+        "ctx_size": 4096,
+        "threads": 6,
+        "gpu_layers": 6,
+        "cpu_offload": true
+      }
     },
-    "recommended_model": "Q4_K_S",
-    "hardware_requirements": {
-      "min_ram_gb": 32,
-      "min_vram_gb": 8,
-      "cpu_cores": 6,
-      "cpu_threads": 12
+    "Q4_K_M_8K": {
+      "description": "Qwen3.6 27B Q4_K_M com contexto 8K (consome mais RAM)",
+      "model_key": "QWEN3_6_27B_Q4_K_M",
+      "settings": {
+        "temperature": 0.6,
+        "top_p": 0.95,
+        "top_k": 40,
+        "repeat_penalty": 1.1,
+        "ctx_size": 8192,
+        "threads": 6,
+        "gpu_layers": 4,
+        "cpu_offload": true
+      }
+    },
+    "Q8_0_4K": {
+      "description": "Qwen3.6 27B Q8_0 com contexto 4K (maior fidelidade)",
+      "model_key": "QWEN3_6_27B_Q8_0",
+      "settings": {
+        "temperature": 0.6,
+        "top_p": 0.95,
+        "top_k": 40,
+        "repeat_penalty": 1.1,
+        "ctx_size": 4096,
+        "threads": 6,
+        "gpu_layers": 4,
+        "cpu_offload": true
+      }
+    },
+    "Q8_0_8K": {
+      "description": "Qwen3.6 27B Q8_0 com contexto 8K (muito pesado)",
+      "model_key": "QWEN3_6_27B_Q8_0",
+      "settings": {
+        "temperature": 0.6,
+        "top_p": 0.95,
+        "top_k": 40,
+        "repeat_penalty": 1.1,
+        "ctx_size": 8192,
+        "threads": 6,
+        "gpu_layers": 2,
+        "cpu_offload": true
+      }
     }
   },
   "usage_tips": {
     "code_generation": {
       "temperature": 0.5,
       "top_p": 0.9,
-      "description": "Para geração de código mais precisa"
+      "description": "Para geracao de codigo mais precisa"
     },
     "code_explanation": {
       "temperature": 0.8,
       "top_p": 0.95,
-      "description": "Para explicações mais criativas"
+      "description": "Para explicacoes mais criativas"
     },
     "code_review": {
       "temperature": 0.6,
       "top_p": 0.9,
-      "description": "Para revisão técnica balanceada"
+      "description": "Para revisao tecnica balanceada"
     }
   }
 }

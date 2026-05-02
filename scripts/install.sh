@@ -1,11 +1,11 @@
 #!/bin/bash
-# Script de Instalação GLM-4.7 para Linux/Mac
+# Script de Instalação Qwen3.6-27B para Linux/Mac
 # Este script instala todas as dependências necessárias
 
 set -e
 
 echo "========================================"
-echo "Instalação GLM-4.7 - Linux/Mac"
+echo "Instalação Qwen3.6-27B - Linux/Mac"
 echo "========================================"
 echo ""
 
@@ -132,6 +132,6 @@ echo "========================================"
 echo ""
 echo "Próximos passos:"
 echo "  1. Configure seu hardware em: config/hardware-config.yaml"
-echo "  2. Baixe um modelo: ./scripts/download-model.sh Q4_K_S"
+echo "  2. Baixe um modelo: ./scripts/download-model.sh QWEN3_6_27B_Q4_K_M"
 echo "  3. Execute o modelo: ./scripts/run-llamacpp.sh"
 echo ""

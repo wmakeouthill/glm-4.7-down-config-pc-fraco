@@ -80,9 +80,9 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
 # Determinar modelo recomendado
-$recommendedModel = "Q4_K_S"
-$recommendedGpuLayers = 0
-$recommendedCtxSize = 2048
+$recommendedModel = "QWEN3_6_27B_Q4_K_M"
+$recommendedGpuLayers = 6
+$recommendedCtxSize = 4096
 
 # Ajustar CUDA arch baseado na GPU detectada
 $cudaArch = "75"  # Padrão
@@ -94,29 +94,23 @@ if ($gpuName -match "RTX 40|RTX 4060|RTX 4070|RTX 4080|RTX 4090") {
     $cudaArch = "75"  # Turing
 }
 
-if ($vramGB -ge 24 -and $ramTotalGB -ge 128) {
-    $recommendedModel = "UD-Q2_K_XL"
-    $recommendedGpuLayers = 20
-    $recommendedCtxSize = 16384
-} elseif ($vramGB -ge 16 -and $ramTotalGB -ge 64) {
-    $recommendedModel = "Q4_K_M"
-    $recommendedGpuLayers = 15
-    $recommendedCtxSize = 8192
-} elseif ($vramGB -ge 8 -and $ramTotalGB -ge 32) {
-    # Caso especial: 8GB VRAM + 32GB RAM (como RTX 4060)
-    $recommendedModel = "Q4_K_S"
-    $recommendedGpuLayers = 6  # Usar algumas camadas na GPU, resto em CPU
-    $recommendedCtxSize = 4096  # Contexto adequado para código
-    Write-Host "Configuração otimizada para desenvolvimento/codificação" -ForegroundColor Green
-} elseif ($vramGB -ge 12 -and $ramTotalGB -ge 48) {
-    $recommendedModel = "Q4_K_S"
-    $recommendedGpuLayers = 10
+if ($vramGB -ge 16 -and $ramTotalGB -ge 64) {
+    $recommendedModel = "QWEN3_6_27B_Q8_0"
+    $recommendedGpuLayers = 8
     $recommendedCtxSize = 4096
+    Write-Host "Configuração para maior fidelidade (Q8_0)" -ForegroundColor Green
+} elseif ($vramGB -ge 8 -and $ramTotalGB -ge 32) {
+    $recommendedModel = "QWEN3_6_27B_Q4_K_M"
+    $recommendedGpuLayers = 6
+    $recommendedCtxSize = 4096
+    Write-Host "Configuração otimizada para desenvolvimento/codificação" -ForegroundColor Green
 } elseif ($ramTotalGB -ge 32) {
-    $recommendedModel = "Q4_K_S"
+    $recommendedModel = "QWEN3_6_27B_Q4_K_M"
     $recommendedGpuLayers = 0
     $recommendedCtxSize = 2048
-    Write-Host "AVISO: Hardware muito limitado. Considere usar modelos menores ou serviços em nuvem." -ForegroundColor Yellow
+    Write-Host "AVISO: GPU limitada. Usando CPU-only com contexto menor." -ForegroundColor Yellow
+} else {
+    Write-Host "AVISO: Hardware insuficiente. Recomenda-se pelo menos 32GB de RAM." -ForegroundColor Yellow
 }
 
 Write-Host "Modelo recomendado: $recommendedModel" -ForegroundColor Green

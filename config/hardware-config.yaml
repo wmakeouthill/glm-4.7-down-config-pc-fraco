@@ -5,20 +5,20 @@ hardware:
   gpu:
     available: True
     vram_gb: 8
-    cuda_arch: "89"  # Detectado automaticamente
-  
+    cuda_arch: "89" # Detectado automaticamente
+
   cpu:
     cores: 6
     threads: 12
-  
+
   ram_gb: 31.9
-  
+
   disk_space_gb: 148.08
-  
+
   os: "windows"
 
 auto_config:
-  recommended_model: "Q4_K_S"
+  recommended_model: "QWEN3_6_27B_Q4_K_M"
   recommended_gpu_layers: 0
-  recommended_ctx_size: 2048
+  recommended_ctx_size: 4096
   recommended_threads: 6

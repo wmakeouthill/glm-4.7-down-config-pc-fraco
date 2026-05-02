@@ -1,120 +1,39 @@
 {
   "models": {
-    "UD-Q2_K_XL": {
+    "QWEN3_6_27B_Q4_K_M": {
       "source": "huggingface",
-      "name": "GLM-4.7-UD-Q2_K_XL",
-      "repo": "unsloth/GLM-4.7-UD-Q2_K_XL",
-      "size_gb": 135,
-      "min_ram_gb": 128,
-      "min_vram_gb": 24,
-      "description": "2-bit quantizado, melhor qualidade, requer hardware potente"
-    },
-    "Q4_K_M": {
-      "source": "huggingface",
-      "name": "GLM-4.7-Q4_K_M",
-      "repo": "bartowski/zai-org_GLM-4.7-GGUF",
-      "file": "GLM-4.7-Q4_K_M.gguf",
-      "size_gb": 200,
-      "min_ram_gb": 64,
-      "min_vram_gb": 16,
-      "description": "4-bit médio, bom equilíbrio qualidade/performance"
-    },
-    "Q4_K_S": {
-      "source": "huggingface",
-      "name": "GLM-4.7-Q4_K_S",
-      "repo": "bartowski/zai-org_GLM-4.7-GGUF",
-      "file": "GLM-4.7-Q4_K_S.gguf",
-      "size_gb": 180,
-      "min_ram_gb": 48,
-      "min_vram_gb": 12,
-      "description": "4-bit pequeno, ideal para hardware limitado"
-    },
-    "Q5_K_M": {
-      "source": "huggingface",
-      "name": "GLM-4.7-Q5_K_M",
-      "repo": "bartowski/zai-org_GLM-4.7-GGUF",
-      "file": "GLM-4.7-Q5_K_M.gguf",
-      "size_gb": 240,
-      "min_ram_gb": 80,
-      "min_vram_gb": 20,
-      "description": "5-bit médio, melhor qualidade que Q4"
-    },
-    "QWEN_CODER_7B_OLLAMA": {
-      "source": "ollama",
-      "name": "Qwen Coder 7B",
-      "tag": "qwen2.5-coder:7b",
-      "size_gb": 5,
-      "min_ram_gb": 16,
-      "min_vram_gb": 6,
-      "description": "Rápido para uso diário e iterativo"
-    },
-    "QWEN_CODER_14B_OLLAMA": {
-      "source": "ollama",
-      "name": "Qwen 2.5 Coder 14B",
-      "tag": "qwen2.5-coder:14b",
-      "size_gb": 9,
-      "min_ram_gb": 24,
-      "min_vram_gb": 8,
-      "description": "Qwen 2.5 Coder 14B com bom equilíbrio entre qualidade e velocidade"
-    },
-    "QWEN3_CODER_OLLAMA": {
-      "source": "ollama",
-      "name": "Qwen3 Coder (latest)",
-      "tag": "qwen3-coder",
-      "size_gb": 18,
+      "name": "Qwen3.6-27B-Q4_K_M",
+      "repo": "unsloth/Qwen3.6-27B-GGUF",
+      "file": "Qwen3.6-27B-Q4_K_M.gguf",
+      "size_gb": 17,
       "min_ram_gb": 32,
       "min_vram_gb": 8,
-      "description": "Qwen3-Coder na variante padrão disponível no Ollama"
+      "description": "4-bit balanceado para codigo e uso geral"
     },
-    "QWEN_CODER_32B_OLLAMA": {
-      "source": "ollama",
-      "name": "Qwen Coder 32B",
-      "tag": "qwen2.5-coder:32b",
-      "size_gb": 20,
+    "QWEN3_6_27B_Q8_0": {
+      "source": "huggingface",
+      "name": "Qwen3.6-27B-Q8_0",
+      "repo": "unsloth/Qwen3.6-27B-GGUF",
+      "file": "Qwen3.6-27B-Q8_0.gguf",
+      "size_gb": 29,
       "min_ram_gb": 48,
       "min_vram_gb": 12,
-      "description": "Qualidade alta, porém mais pesado"
-    },
-    "GLM_4_9B_OLLAMA": {
-      "source": "ollama",
-      "name": "GLM-4 9B",
-      "tag": "glm4:9b",
-      "size_gb": 6,
-      "min_ram_gb": 16,
-      "min_vram_gb": 6,
-      "description": "Alternativa GLM leve para 32GB RAM"
-    },
-    "DEEPSEEK_CODER_V2_16B_OLLAMA": {
-      "source": "ollama",
-      "name": "DeepSeek Coder V2 16B",
-      "tag": "deepseek-coder-v2:16b",
-      "size_gb": 10,
-      "min_ram_gb": 24,
-      "min_vram_gb": 8,
-      "description": "Forte em codificação e raciocínio técnico"
-    },
-    "CODESTRAL_22B_OLLAMA": {
-      "source": "ollama",
-      "name": "Codestral 22B",
-      "tag": "codestral:22b",
-      "size_gb": 13,
-      "min_ram_gb": 32,
-      "min_vram_gb": 10,
-      "description": "Bom para geração rápida de código"
+      "description": "8-bit para maior fidelidade, exige mais RAM/VRAM"
     }
   },
   "default_settings": {
-    "temperature": 1.0,
+    "temperature": 0.7,
     "top_p": 0.95,
     "top_k": 40,
     "repeat_penalty": 1.1,
     "ctx_size": 4096,
-    "threads": 4,
-    "gpu_layers": 0
+    "threads": 6,
+    "gpu_layers": 6
   },
   "low_resource_settings": {
-    "temperature": 1.0,
+    "temperature": 0.7,
     "top_p": 0.95,
+    "top_k": 40,
     "ctx_size": 2048,
     "threads": 2,
     "gpu_layers": 0,

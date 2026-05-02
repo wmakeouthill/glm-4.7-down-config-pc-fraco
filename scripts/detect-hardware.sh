@@ -94,9 +94,9 @@ echo "========================================"
 echo ""
 
 # Determinar modelo recomendado
-RECOMMENDED_MODEL="Q4_K_S"
-RECOMMENDED_GPU_LAYERS=0
-RECOMMENDED_CTX_SIZE=2048
+RECOMMENDED_MODEL="QWEN3_6_27B_Q4_K_M"
+RECOMMENDED_GPU_LAYERS=6
+RECOMMENDED_CTX_SIZE=4096
 CUDA_ARCH="75"  # Padrão
 
 RAM_TOTAL_INT=$(echo "$RAM_TOTAL_GB" | cut -d. -f1)
@@ -113,29 +113,21 @@ if [ -n "$GPU_NAME" ]; then
     fi
 fi
 
-if [ "$VRAM_INT" -ge 24 ] && [ "$RAM_TOTAL_INT" -ge 128 ]; then
-    RECOMMENDED_MODEL="UD-Q2_K_XL"
-    RECOMMENDED_GPU_LAYERS=20
-    RECOMMENDED_CTX_SIZE=16384
-elif [ "$VRAM_INT" -ge 16 ] && [ "$RAM_TOTAL_INT" -ge 64 ]; then
-    RECOMMENDED_MODEL="Q4_K_M"
-    RECOMMENDED_GPU_LAYERS=15
-    RECOMMENDED_CTX_SIZE=8192
-elif [ "$VRAM_INT" -ge 8 ] && [ "$RAM_TOTAL_INT" -ge 32 ]; then
-    # Caso especial: 8GB VRAM + 32GB RAM (como RTX 4060)
-    RECOMMENDED_MODEL="Q4_K_S"
-    RECOMMENDED_GPU_LAYERS=6  # Usar algumas camadas na GPU, resto em CPU
-    RECOMMENDED_CTX_SIZE=4096  # Contexto adequado para código
-    echo "[INFO] Configuração otimizada para desenvolvimento/codificação"
-elif [ "$VRAM_INT" -ge 12 ] && [ "$RAM_TOTAL_INT" -ge 48 ]; then
-    RECOMMENDED_MODEL="Q4_K_S"
-    RECOMMENDED_GPU_LAYERS=10
+if [ "$VRAM_INT" -ge 16 ] && [ "$RAM_TOTAL_INT" -ge 64 ]; then
+    RECOMMENDED_MODEL="QWEN3_6_27B_Q8_0"
+    RECOMMENDED_GPU_LAYERS=8
     RECOMMENDED_CTX_SIZE=4096
+    echo "[INFO] Configuração para maior fidelidade (Q8_0)"
+elif [ "$VRAM_INT" -ge 8 ] && [ "$RAM_TOTAL_INT" -ge 32 ]; then
+    RECOMMENDED_MODEL="QWEN3_6_27B_Q4_K_M"
+    RECOMMENDED_GPU_LAYERS=6
+    RECOMMENDED_CTX_SIZE=4096
+    echo "[INFO] Configuração otimizada para desenvolvimento/codificação"
 elif [ "$RAM_TOTAL_INT" -ge 32 ]; then
-    RECOMMENDED_MODEL="Q4_K_S"
+    RECOMMENDED_MODEL="QWEN3_6_27B_Q4_K_M"
     RECOMMENDED_GPU_LAYERS=0
     RECOMMENDED_CTX_SIZE=2048
-    echo "[AVISO] Hardware muito limitado. Considere usar modelos menores ou serviços em nuvem."
+    echo "[AVISO] GPU limitada. Usando CPU-only com contexto menor."
 else
     echo "[AVISO] Hardware insuficiente. Recomenda-se pelo menos 32GB de RAM."
 fi

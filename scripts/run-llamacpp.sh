@@ -1,101 +1,267 @@
-#!/bin/bash
-# Script de Execução GLM-4.7 com llama.cpp para Linux/Mac
+clear#!/bin/bash
+# Script de Execucao Qwen3.6-27B com llama.cpp para Linux/Mac
 # Otimizado para hardware limitado
 
 set -e
 
-# Parâmetros
-MODEL_VERSION="${1:-}"
-CTX_SIZE="${2:-0}"
-THREADS="${3:-0}"
-GPU_LAYERS="${4:--1}"
-CPU_ONLY="${5:-false}"
-PROMPT="${6:-}"
+MODEL_VERSION=""
+PROFILE=""
+CTX_SIZE="0"
+THREADS="0"
+GPU_LAYERS="-1"
+CPU_ONLY="false"
+PROMPT=""
+
+USE_FLAGS=false
+if [[ "${1:-}" == --* ]]; then
+    USE_FLAGS=true
+fi
+
+if [ "$USE_FLAGS" = false ]; then
+    MODEL_VERSION="${1:-}"
+    CTX_SIZE="${2:-0}"
+    THREADS="${3:-0}"
+    GPU_LAYERS="${4:--1}"
+    CPU_ONLY="${5:-false}"
+    PROMPT="${6:-}"
+else
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --model)
+                MODEL_VERSION="$2"
+                shift 2
+                ;;
+            --profile)
+                PROFILE="$2"
+                shift 2
+                ;;
+            --ctx-size)
+                CTX_SIZE="$2"
+                shift 2
+                ;;
+            --threads)
+                THREADS="$2"
+                shift 2
+                ;;
+            --gpu-layers)
+                GPU_LAYERS="$2"
+                shift 2
+                ;;
+            --cpu-only)
+                CPU_ONLY="true"
+                shift
+                ;;
+            --prompt)
+                PROMPT="$2"
+                shift 2
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+fi
 
 echo "========================================"
-echo "Executando GLM-4.7 com llama.cpp"
+echo "Executando Qwen3.6-27B com llama.cpp"
 echo "========================================"
 echo ""
 
-# Carregar configurações
 MODEL_CONFIG="config/model-config.json"
+DEV_CONFIG="config/dev-config.json"
 
 if [ ! -f "$MODEL_CONFIG" ]; then
-    echo "[ERRO] Arquivo de configuração não encontrado: $MODEL_CONFIG"
+    echo "[ERRO] Arquivo de configuracao nao encontrado: $MODEL_CONFIG"
     exit 1
 fi
 
-# Detectar modelo disponível
-if [ -z "$MODEL_VERSION" ]; then
-    # Tentar encontrar modelo automaticamente
-    MODELS_DIR="models"
-    if [ -d "$MODELS_DIR" ]; then
-        # Tentar encontrar a versão mais leve primeiro
-        for version in "Q4_K_S" "Q4_K_M" "Q5_K_M" "UD-Q2_K_XL"; do
-            FOUND=$(find "$MODELS_DIR" -type d -name "*$version*" | head -1)
-            if [ -n "$FOUND" ]; then
-                MODEL_VERSION="$version"
-                echo "[OK] Modelo detectado automaticamente: $(basename "$FOUND")"
-                break
-            fi
-        done
-        
-        if [ -z "$MODEL_VERSION" ]; then
-            # Usar primeiro modelo encontrado
-            FIRST_MODEL=$(find "$MODELS_DIR" -maxdepth 1 -type d | grep -v "^$MODELS_DIR$" | head -1)
-            if [ -n "$FIRST_MODEL" ]; then
-                MODEL_VERSION=$(basename "$FIRST_MODEL")
-                echo "[INFO] Usando primeiro modelo encontrado: $MODEL_VERSION"
-            fi
-        fi
-    fi
-    
-    if [ -z "$MODEL_VERSION" ]; then
-        echo "[ERRO] Nenhum modelo encontrado em 'models/'"
-        echo "Baixe um modelo primeiro: ./scripts/download-model.sh Q4_K_S"
-        exit 1
-    fi
+if ! command -v python3 &> /dev/null; then
+    echo "[ERRO] python3 nao encontrado (necessario para ler config JSON)"
+    exit 1
 fi
 
-# Encontrar arquivo do modelo
-MODEL_PATH=""
-MODELS_DIR="models"
+# Carregar configuracoes base
+DEFAULT_SETTINGS=$(python3 - <<'PY'
+import json
 
-# Procurar por arquivo .gguf
-GGUF_FILE=$(find "$MODELS_DIR" -name "*$MODEL_VERSION*.gguf" | head -1)
-if [ -n "$GGUF_FILE" ]; then
-    MODEL_PATH="$GGUF_FILE"
+with open('config/model-config.json', 'r', encoding='utf-8') as f:
+    cfg = json.load(f)
+
+settings = cfg.get('default_settings', {})
+print(
+    f"{settings.get('ctx_size', 4096)}|{settings.get('temperature', 0.7)}|"
+    f"{settings.get('top_p', 0.95)}|{settings.get('top_k', 40)}|"
+    f"{settings.get('repeat_penalty', 1.1)}|{settings.get('threads', 6)}|"
+    f"{settings.get('gpu_layers', 6)}"
+)
+PY
+)
+
+IFS='|' read -r DEFAULT_CTX DEFAULT_TEMP DEFAULT_TOP_P DEFAULT_TOP_K DEFAULT_REPEAT DEFAULT_THREADS DEFAULT_GPU_LAYERS <<< "$DEFAULT_SETTINGS"
+
+# Carregar perfil (opcional)
+if [ -n "$PROFILE" ]; then
+    PROFILE_META=$(python3 - <<PY
+import json
+
+profile_key = "$PROFILE"
+with open('config/dev-config.json', 'r', encoding='utf-8') as f:
+    cfg = json.load(f)
+
+profiles = cfg.get('profiles', {})
+profile = profiles.get(profile_key)
+if not profile:
+    print('NOT_FOUND')
+else:
+    settings = profile.get('settings', {})
+    def get_val(key):
+        val = settings.get(key)
+        return '' if val is None else val
+
+    print(
+        "FOUND|{model_key}|{ctx}|{temp}|{top_p}|{top_k}|{rep}|{thr}|{gpu}".format(
+            model_key=profile.get('model_key', ''),
+            ctx=get_val('ctx_size'),
+            temp=get_val('temperature'),
+            top_p=get_val('top_p'),
+            top_k=get_val('top_k'),
+            rep=get_val('repeat_penalty'),
+            thr=get_val('threads'),
+            gpu=get_val('gpu_layers'),
+        )
+    )
+PY
+)
+
+    if [ "$PROFILE_META" = "NOT_FOUND" ]; then
+        PROFILE_LIST=$(python3 - <<'PY'
+import json
+
+with open('config/dev-config.json', 'r', encoding='utf-8') as f:
+    cfg = json.load(f)
+
+print(' '.join(cfg.get('profiles', {}).keys()))
+PY
+)
+        echo "[ERRO] Perfil nao encontrado: $PROFILE"
+        echo "Perfis disponiveis: $PROFILE_LIST"
+        exit 1
+    fi
+
+    IFS='|' read -r PROFILE_STATUS PROFILE_MODEL PROFILE_CTX PROFILE_TEMP PROFILE_TOP_P PROFILE_TOP_K PROFILE_REPEAT PROFILE_THREADS PROFILE_GPU <<< "$PROFILE_META"
+
+    if [ -z "$MODEL_VERSION" ] && [ -n "$PROFILE_MODEL" ]; then
+        MODEL_VERSION="$PROFILE_MODEL"
+    fi
+
+    if [ -n "$PROFILE_CTX" ]; then DEFAULT_CTX="$PROFILE_CTX"; fi
+    if [ -n "$PROFILE_TEMP" ]; then DEFAULT_TEMP="$PROFILE_TEMP"; fi
+    if [ -n "$PROFILE_TOP_P" ]; then DEFAULT_TOP_P="$PROFILE_TOP_P"; fi
+    if [ -n "$PROFILE_TOP_K" ]; then DEFAULT_TOP_K="$PROFILE_TOP_K"; fi
+    if [ -n "$PROFILE_REPEAT" ]; then DEFAULT_REPEAT="$PROFILE_REPEAT"; fi
+    if [ -n "$PROFILE_THREADS" ]; then DEFAULT_THREADS="$PROFILE_THREADS"; fi
+    if [ -n "$PROFILE_GPU" ]; then DEFAULT_GPU_LAYERS="$PROFILE_GPU"; fi
+fi
+
+MODEL_KEYS=$(python3 - <<'PY'
+import json
+
+with open('config/model-config.json', 'r', encoding='utf-8') as f:
+    cfg = json.load(f)
+
+print(' '.join(cfg.get('models', {}).keys()))
+PY
+)
+
+resolve_model_path() {
+    python3 - <<PY
+import json
+import os
+
+model_key = "$1"
+models_dir = "models"
+
+with open('config/model-config.json', 'r', encoding='utf-8') as f:
+    cfg = json.load(f)
+
+info = cfg.get('models', {}).get(model_key)
+if not info:
+    print("")
+    raise SystemExit
+
+name = info.get('name', '')
+file_name = info.get('file', '')
+
+if name and file_name:
+    candidate = os.path.join(models_dir, name, file_name)
+    if os.path.exists(candidate):
+        print(candidate)
+        raise SystemExit
+
+if name:
+    candidate_dir = os.path.join(models_dir, name)
+    if os.path.isdir(candidate_dir):
+        for root, _, files in os.walk(candidate_dir):
+            for fn in files:
+                if fn.endswith('.gguf'):
+                    print(os.path.join(root, fn))
+                    raise SystemExit
+        print(candidate_dir)
+        raise SystemExit
+
+if file_name:
+    for root, _, files in os.walk(models_dir):
+        if file_name in files:
+            print(os.path.join(root, file_name))
+            raise SystemExit
+
+print("")
+PY
+}
+
+# Detectar modelo disponivel
+if [ -z "$MODEL_VERSION" ]; then
+    for candidate in "QWEN3_6_27B_Q4_K_M" "QWEN3_6_27B_Q8_0"; do
+        MODEL_PATH=$(resolve_model_path "$candidate")
+        if [ -n "$MODEL_PATH" ]; then
+            MODEL_VERSION="$candidate"
+            break
+        fi
+    done
+fi
+
+if [ -z "$MODEL_VERSION" ]; then
+    echo "[ERRO] Nenhum modelo encontrado em 'models/'"
+    echo "Baixe um modelo primeiro: ./scripts/download-model.sh QWEN3_6_27B_Q4_K_M"
+    exit 1
+fi
+
+MODEL_PATH=""
+if echo " $MODEL_KEYS " | grep -q " $MODEL_VERSION "; then
+    MODEL_PATH=$(resolve_model_path "$MODEL_VERSION")
 else
-    # Procurar por diretório do modelo
-    MODEL_DIR=$(find "$MODELS_DIR" -type d -name "*$MODEL_VERSION*" | head -1)
-    if [ -n "$MODEL_DIR" ]; then
-        # Procurar .gguf dentro do diretório
-        GGUF_IN_DIR=$(find "$MODEL_DIR" -name "*.gguf" | head -1)
-        if [ -n "$GGUF_IN_DIR" ]; then
-            MODEL_PATH="$GGUF_IN_DIR"
-        else
-            MODEL_PATH="$MODEL_DIR"
+    GGUF_FILE=$(find "models" -name "*$MODEL_VERSION*.gguf" | head -1)
+    if [ -n "$GGUF_FILE" ]; then
+        MODEL_PATH="$GGUF_FILE"
+    else
+        MODEL_DIR=$(find "models" -type d -name "*$MODEL_VERSION*" | head -1)
+        if [ -n "$MODEL_DIR" ]; then
+            GGUF_IN_DIR=$(find "$MODEL_DIR" -name "*.gguf" | head -1)
+            if [ -n "$GGUF_IN_DIR" ]; then
+                MODEL_PATH="$GGUF_IN_DIR"
+            else
+                MODEL_PATH="$MODEL_DIR"
+            fi
         fi
     fi
 fi
 
 if [ -z "$MODEL_PATH" ] || [ ! -e "$MODEL_PATH" ]; then
-    echo "[ERRO] Modelo não encontrado para versão: $MODEL_VERSION"
+    echo "[ERRO] Modelo nao encontrado para versao: $MODEL_VERSION"
     exit 1
 fi
 
 echo "[OK] Modelo: $MODEL_PATH"
-
-# Detectar hardware e ajustar parâmetros
-DEFAULT_SETTINGS=$(python3 -c "
-import json
-with open('$MODEL_CONFIG', 'r') as f:
-    config = json.load(f)
-    settings = config['default_settings']
-    print(f\"{settings['ctx_size']}|{settings['temperature']}|{settings['top_p']}|{settings['repeat_penalty']}\")
-" 2>/dev/null)
-
-IFS='|' read -r DEFAULT_CTX DEFAULT_TEMP DEFAULT_TOP_P DEFAULT_REPEAT <<< "$DEFAULT_SETTINGS"
 
 # Detectar GPU
 HAS_GPU=false
@@ -107,35 +273,45 @@ if [ "$CPU_ONLY" != "true" ] && command -v nvidia-smi &> /dev/null; then
     fi
 fi
 
-# Ajustar parâmetros baseados no hardware
+# Ajustar parametros baseados no hardware
 if [ "$CTX_SIZE" = "0" ]; then
-    if [ "$HAS_GPU" = true ]; then
-        CTX_SIZE="$DEFAULT_CTX"
-    else
-        LOW_RES_CTX=$(python3 -c "
+    if [ "$HAS_GPU" = false ] && [ -z "$PROFILE" ]; then
+        LOW_RES_CTX=$(python3 - <<'PY'
 import json
-with open('$MODEL_CONFIG', 'r') as f:
-    config = json.load(f)
-    print(config['low_resource_settings']['ctx_size'])
-" 2>/dev/null)
+
+with open('config/model-config.json', 'r', encoding='utf-8') as f:
+    cfg = json.load(f)
+
+print(cfg.get('low_resource_settings', {}).get('ctx_size', 2048))
+PY
+)
         CTX_SIZE="$LOW_RES_CTX"
         echo "[INFO] Modo CPU-only: usando contexto reduzido ($CTX_SIZE)"
+    else
+        CTX_SIZE="$DEFAULT_CTX"
     fi
 fi
 
 if [ "$THREADS" = "0" ]; then
-    CPU_CORES=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
-    THREADS=$((CPU_CORES / 2))
-    if [ "$THREADS" -lt 2 ]; then
-        THREADS=2
+    if [ -n "$DEFAULT_THREADS" ] && [ "$DEFAULT_THREADS" != "0" ]; then
+        THREADS="$DEFAULT_THREADS"
+    else
+        CPU_CORES=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+        THREADS=$((CPU_CORES / 2))
+        if [ "$THREADS" -lt 2 ]; then
+            THREADS=2
+        fi
     fi
-    echo "[INFO] Threads: $THREADS (baseado em $CPU_CORES cores)"
+    echo "[INFO] Threads: $THREADS"
 fi
 
 if [ "$GPU_LAYERS" = "-1" ]; then
     if [ "$HAS_GPU" = true ] && [ "$CPU_ONLY" != "true" ]; then
-        # Tentar usar algumas camadas na GPU
-        GPU_LAYERS=10
+        if [ -n "$DEFAULT_GPU_LAYERS" ] && [ "$DEFAULT_GPU_LAYERS" != "0" ]; then
+            GPU_LAYERS="$DEFAULT_GPU_LAYERS"
+        else
+            GPU_LAYERS=10
+        fi
         echo "[INFO] GPU Layers: $GPU_LAYERS"
     else
         GPU_LAYERS=0
@@ -143,7 +319,11 @@ if [ "$GPU_LAYERS" = "-1" ]; then
     fi
 fi
 
-# Encontrar executável llama.cpp
+if [ "$CPU_ONLY" = "true" ]; then
+    GPU_LAYERS=0
+fi
+
+# Encontrar executavel llama.cpp
 LLAMA_EXE=""
 POSSIBLE_PATHS=(
     "llama.cpp/build/bin/llama-cli"
@@ -160,13 +340,13 @@ for path in "${POSSIBLE_PATHS[@]}"; do
 done
 
 if [ -z "$LLAMA_EXE" ]; then
-    echo "[ERRO] Executável llama.cpp não encontrado!"
+    echo "[ERRO] Executavel llama.cpp nao encontrado!"
     echo "Procurei em:"
     for path in "${POSSIBLE_PATHS[@]}"; do
         echo "  - $path"
     done
     echo ""
-    echo "Opções:"
+    echo "Opcoes:"
     echo "  1. Execute: ./scripts/install.sh (compila automaticamente)"
     echo "  2. Compile manualmente: cd llama.cpp && cmake -B build && cmake --build build"
     exit 1
@@ -179,6 +359,7 @@ CMD_ARGS=(
     "--ctx-size" "$CTX_SIZE"
     "--temp" "$DEFAULT_TEMP"
     "--top-p" "$DEFAULT_TOP_P"
+    "--top-k" "$DEFAULT_TOP_K"
     "--repeat-penalty" "$DEFAULT_REPEAT"
     "--jinja"
 )

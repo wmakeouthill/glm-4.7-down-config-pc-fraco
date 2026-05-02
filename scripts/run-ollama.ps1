@@ -2,7 +2,7 @@
 # Usa o catálogo em config/model-config.json
 
 param(
-    [string]$ModelVersion = "QWEN_CODER_14B_OLLAMA",
+    [string]$ModelVersion = "",
 
     [switch]$List
 )
@@ -11,6 +11,7 @@ $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = (Resolve-Path (Join-Path $scriptDir "..")).Path
+$repoModelsPath = Join-Path $repoRoot "models"
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "Executando Modelo com Ollama" -ForegroundColor Cyan
@@ -37,6 +38,11 @@ foreach ($key in $allModelKeys) {
 }
 
 if ($List) {
+    if ($ollamaModelKeys.Count -eq 0) {
+        Write-Host "Nenhum modelo Ollama configurado no catalogo atual." -ForegroundColor Yellow
+        Write-Host "Edite config/model-config.json se quiser usar Ollama." -ForegroundColor Gray
+        exit 0
+    }
     Write-Host "Modelos Ollama disponíveis:" -ForegroundColor Green
     foreach ($modelKey in $ollamaModelKeys) {
         $info = $config.models.$modelKey
@@ -44,8 +50,14 @@ if ($List) {
     }
     Write-Host ""
     Write-Host "Exemplo:" -ForegroundColor Yellow
-    Write-Host "  .\scripts\run-ollama.ps1 -ModelVersion QWEN_CODER_14B_OLLAMA" -ForegroundColor White
+    Write-Host "  .\scripts\run-ollama.ps1 -ModelVersion <CHAVE_OLLAMA>" -ForegroundColor White
     exit 0
+}
+
+if ($ollamaModelKeys.Count -eq 0) {
+    Write-Host "Nenhum modelo Ollama configurado no catalogo atual." -ForegroundColor Yellow
+    Write-Host "Este repositorio esta configurado para GGUF (llama.cpp)." -ForegroundColor Gray
+    exit 1
 }
 
 function Resolve-OllamaCommand {
@@ -91,6 +103,24 @@ catch {
     Write-Host "Ou use: winget install Ollama.Ollama" -ForegroundColor Yellow
     exit 1
 }
+
+if (-not (Test-Path $repoModelsPath)) {
+    New-Item -ItemType Directory -Path $repoModelsPath | Out-Null
+}
+
+$currentUserPath = [Environment]::GetEnvironmentVariable("OLLAMA_MODELS", "User")
+if ($currentUserPath -ne $repoModelsPath) {
+    [Environment]::SetEnvironmentVariable("OLLAMA_MODELS", $repoModelsPath, "User")
+    Write-Host "OLLAMA_MODELS (User) configurado para: $repoModelsPath" -ForegroundColor Green
+}
+
+$env:OLLAMA_MODELS = $repoModelsPath
+Write-Host "OLLAMA_MODELS (sessão atual): $env:OLLAMA_MODELS" -ForegroundColor Gray
+
+Get-Process "ollama", "ollama app" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 1
+Start-Process -FilePath $ollamaCommand -ArgumentList "serve" -WindowStyle Hidden | Out-Null
+Start-Sleep -Seconds 2
 
 if ($allModelKeys -notcontains $ModelVersion) {
     Write-Host "Modelo não suportado: $ModelVersion" -ForegroundColor Red

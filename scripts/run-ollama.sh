@@ -4,7 +4,7 @@
 
 set -e
 
-MODEL_VERSION="${1:-QWEN_CODER_14B_OLLAMA}"
+MODEL_VERSION="${1:-}"
 
 if [[ "$1" == "--list" || "$1" == "-l" ]]; then
     LIST_MODE=true
@@ -42,8 +42,24 @@ for key, info in cfg.get('models', {}).items():
     if source == 'ollama':
         print(f"  - {key} -> {info.get('tag', '')} ({info.get('name', '')})")
 PY
+    HAS_OLLAMA=$(python3 - <<'PY'
+import json
+
+with open('config/model-config.json', 'r', encoding='utf-8') as f:
+    cfg = json.load(f)
+
+has_ollama = any((info.get('source') == 'ollama' or info.get('tag')) for info in cfg.get('models', {}).values())
+print('HAS_OLLAMA' if has_ollama else 'NO_OLLAMA')
+PY
+    )
+    if [ "$HAS_OLLAMA" = "NO_OLLAMA" ]; then
+        echo ""
+        echo "Nenhum modelo Ollama configurado no catalogo atual."
+        echo "Edite config/model-config.json se quiser usar Ollama."
+        exit 0
+    fi
     echo ""
-    echo "Exemplo: ./scripts/run-ollama.sh QWEN_CODER_14B_OLLAMA"
+    echo "Exemplo: ./scripts/run-ollama.sh <CHAVE_OLLAMA>"
     exit 0
 fi
 
@@ -81,8 +97,8 @@ PY
 )
 
 if [ "$MODEL_META" = "NOT_FOUND" ]; then
-    echo "[ERRO] Modelo não suportado: $MODEL_VERSION"
-    echo "Use --list para ver as opções de Ollama."
+    echo "[ERRO] Modelo nao suportado: $MODEL_VERSION"
+    echo "Use --list para ver as opcoes de Ollama."
     exit 1
 fi
 

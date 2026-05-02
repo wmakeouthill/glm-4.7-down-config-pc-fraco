@@ -1,25 +1,29 @@
-# Script de Execução GLM-4.7 com llama.cpp para Windows
+# Script de Execucao Qwen3.6-27B com llama.cpp para Windows
 # Otimizado para hardware limitado
 
 param(
     [string]$ModelVersion = "",
+    [string]$Profile = "",
     [int]$CtxSize = 0,
     [int]$Threads = 0,
     [int]$GpuLayers = -1,
     [switch]$CpuOnly = $false,
-    [string]$Prompt = ""
+    [string]$Prompt = "",
+    [ValidateSet("", "q8_0", "q4_0", "q4_1", "q5_0")]
+    [string]$KvCache = "",
+    [switch]$FlashAttn
 )
 
 $ErrorActionPreference = "Stop"
 
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "Executando GLM-4.7 com llama.cpp" -ForegroundColor Cyan
+Write-Host "Executando Qwen3.6-27B com llama.cpp" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
 # Carregar configurações
-$hardwareConfig = "config/hardware-config.yaml"
 $modelConfig = "config/model-config.json"
+$devConfigPath = "config/dev-config.json"
 
 if (-not (Test-Path $modelConfig)) {
     Write-Host "Erro: Arquivo de configuração não encontrado: $modelConfig" -ForegroundColor Red
@@ -27,67 +31,144 @@ if (-not (Test-Path $modelConfig)) {
 }
 
 $config = Get-Content $modelConfig | ConvertFrom-Json
+$availableModelKeys = @($config.models.PSObject.Properties.Name)
+
+# Carregar perfil (opcional)
+$profileSettings = $null
+$profileModelKey = $null
+if (-not [string]::IsNullOrEmpty($Profile)) {
+    if (-not (Test-Path $devConfigPath)) {
+        Write-Host "Erro: Arquivo de perfis nao encontrado: $devConfigPath" -ForegroundColor Red
+        exit 1
+    }
+
+    $devConfig = Get-Content $devConfigPath | ConvertFrom-Json
+    $profile = $devConfig.profiles.$Profile
+    if (-not $profile) {
+        $profileKeys = @($devConfig.profiles.PSObject.Properties.Name)
+        Write-Host "Erro: Perfil '$Profile' nao encontrado." -ForegroundColor Red
+        Write-Host "Perfis disponiveis: $($profileKeys -join ', ')" -ForegroundColor Yellow
+        exit 1
+    }
+
+    $profileSettings = $profile.settings
+    $profileModelKey = $profile.model_key
+}
+
+# Configuracoes base
+$temperature = $config.default_settings.temperature
+$topP = $config.default_settings.top_p
+$topK = $config.default_settings.top_k
+$repeatPenalty = $config.default_settings.repeat_penalty
+$ctxDefault = $config.default_settings.ctx_size
+$threadsDefault = $config.default_settings.threads
+$gpuLayersDefault = $config.default_settings.gpu_layers
+
+if ($profileSettings) {
+    if ($profileSettings.temperature) { $temperature = $profileSettings.temperature }
+    if ($profileSettings.top_p) { $topP = $profileSettings.top_p }
+    if ($profileSettings.top_k) { $topK = $profileSettings.top_k }
+    if ($profileSettings.repeat_penalty) { $repeatPenalty = $profileSettings.repeat_penalty }
+    if ($profileSettings.ctx_size) { $ctxDefault = $profileSettings.ctx_size }
+    if ($profileSettings.threads) { $threadsDefault = $profileSettings.threads }
+    if ($profileSettings.gpu_layers -ne $null) { $gpuLayersDefault = $profileSettings.gpu_layers }
+}
+
+function Resolve-ModelPath {
+    param(
+        [string]$ModelKey
+    )
+
+    $modelsDir = "models"
+    $modelInfo = $config.models.$ModelKey
+    if (-not $modelInfo) {
+        return $null
+    }
+
+    if ($modelInfo.file -and $modelInfo.name) {
+        $candidate = Join-Path (Join-Path $modelsDir $modelInfo.name) $modelInfo.file
+        if (Test-Path $candidate) {
+            return $candidate
+        }
+    }
+
+    if ($modelInfo.name) {
+        $candidateDir = Join-Path $modelsDir $modelInfo.name
+        if (Test-Path $candidateDir) {
+            $gguf = Get-ChildItem -Path $candidateDir -Filter "*.gguf" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($gguf) {
+                return $gguf.FullName
+            }
+            return $candidateDir
+        }
+    }
+
+    if ($modelInfo.file) {
+        $found = Get-ChildItem -Path $modelsDir -Recurse -Filter $modelInfo.file -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($found) {
+            return $found.FullName
+        }
+    }
+
+    return $null
+}
 
 # Detectar modelo disponível
 if ([string]::IsNullOrEmpty($ModelVersion)) {
-    # Tentar encontrar modelo automaticamente
-    $modelsDir = "models"
-    if (Test-Path $modelsDir) {
-        $availableModels = Get-ChildItem -Path $modelsDir -Directory | Select-Object -ExpandProperty Name
-        if ($availableModels.Count -gt 0) {
-            # Tentar encontrar a versão mais leve primeiro
-            $preferredOrder = @("Q4_K_S", "Q4_K_M", "Q5_K_M", "UD-Q2_K_XL")
-            foreach ($pref in $preferredOrder) {
-                $found = $availableModels | Where-Object { $_ -like "*$pref*" }
-                if ($found) {
-                    $ModelVersion = $pref
-                    Write-Host "Modelo detectado automaticamente: $($found[0])" -ForegroundColor Green
-                    break
-                }
-            }
-            if ([string]::IsNullOrEmpty($ModelVersion)) {
-                $ModelVersion = $availableModels[0]
-                Write-Host "Usando primeiro modelo encontrado: $ModelVersion" -ForegroundColor Yellow
-            }
+    if (-not [string]::IsNullOrEmpty($profileModelKey)) {
+        $ModelVersion = $profileModelKey
+    }
+}
+
+if ([string]::IsNullOrEmpty($ModelVersion)) {
+    $preferredOrder = @("QWEN3_6_27B_Q4_K_M", "QWEN3_6_27B_Q8_0")
+    foreach ($candidate in $preferredOrder) {
+        $candidatePath = Resolve-ModelPath -ModelKey $candidate
+        if ($candidatePath) {
+            $ModelVersion = $candidate
+            break
         }
     }
-    
-    if ([string]::IsNullOrEmpty($ModelVersion)) {
-        Write-Host "Erro: Nenhum modelo encontrado em 'models/'" -ForegroundColor Red
-        Write-Host "Baixe um modelo primeiro: .\scripts\download-model.ps1 -Version Q4_K_S" -ForegroundColor Yellow
-        exit 1
-    }
+}
+
+if ([string]::IsNullOrEmpty($ModelVersion)) {
+    Write-Host "Erro: Nenhum modelo encontrado em 'models/'" -ForegroundColor Red
+    Write-Host "Baixe um modelo primeiro: .\scripts\download-model.ps1 -Version QWEN3_6_27B_Q4_K_M" -ForegroundColor Yellow
+    exit 1
 }
 
 # Encontrar arquivo do modelo
 $modelPath = $null
-$modelsDir = "models"
-$modelDirs = Get-ChildItem -Path $modelsDir -Directory -ErrorAction SilentlyContinue
-
-foreach ($dir in $modelDirs) {
-    if ($dir.Name -like "*$ModelVersion*") {
-        # Procurar arquivo .gguf
-        $ggufFiles = Get-ChildItem -Path $dir.FullName -Filter "*.gguf" -ErrorAction SilentlyContinue
-        if ($ggufFiles) {
-            $modelPath = $ggufFiles[0].FullName
+if ($availableModelKeys -contains $ModelVersion) {
+    $modelPath = Resolve-ModelPath -ModelKey $ModelVersion
+    if (-not $modelPath) {
+        Write-Host "Erro: Modelo nao encontrado para a chave: $ModelVersion" -ForegroundColor Red
+        exit 1
+    }
+} else {
+    $modelsDir = "models"
+    $modelDirs = Get-ChildItem -Path $modelsDir -Directory -ErrorAction SilentlyContinue
+    foreach ($dir in $modelDirs) {
+        if ($dir.Name -like "*$ModelVersion*") {
+            $ggufFiles = Get-ChildItem -Path $dir.FullName -Filter "*.gguf" -ErrorAction SilentlyContinue
+            if ($ggufFiles) {
+                $modelPath = $ggufFiles[0].FullName
+                break
+            }
+            $modelPath = $dir.FullName
             break
         }
-        # Se não encontrar .gguf, pode ser diretório unsloth
-        $modelPath = $dir.FullName
-        break
     }
 }
 
 if (-not $modelPath -or -not (Test-Path $modelPath)) {
-    Write-Host "Erro: Modelo não encontrado para versão: $ModelVersion" -ForegroundColor Red
+    Write-Host "Erro: Modelo nao encontrado para versao: $ModelVersion" -ForegroundColor Red
     exit 1
 }
 
 Write-Host "Modelo: $modelPath" -ForegroundColor Green
 
 # Detectar hardware e ajustar parâmetros
-$defaultSettings = $config.default_settings
-
 # Detectar GPU
 $hasGpu = $false
 if (-not $CpuOnly) {
@@ -104,29 +185,40 @@ if (-not $CpuOnly) {
 
 # Ajustar parâmetros baseados no hardware
 if ($CtxSize -eq 0) {
-    if ($hasGpu) {
-        $CtxSize = $defaultSettings.ctx_size
-    } else {
+    if (-not $hasGpu -and -not $profileSettings) {
         $CtxSize = $config.low_resource_settings.ctx_size
         Write-Host "Modo CPU-only: usando contexto reduzido ($CtxSize)" -ForegroundColor Yellow
+    } else {
+        $CtxSize = $ctxDefault
     }
 }
 
 if ($Threads -eq 0) {
-    $cpuCores = (Get-WmiObject Win32_Processor).NumberOfCores
-    $Threads = [math]::Max(2, [math]::Floor($cpuCores / 2))
-    Write-Host "Threads: $Threads (baseado em $cpuCores cores)" -ForegroundColor Gray
+    if ($threadsDefault -gt 0) {
+        $Threads = $threadsDefault
+    } else {
+        $cpuCores = (Get-WmiObject Win32_Processor).NumberOfCores
+        $Threads = [math]::Max(2, [math]::Floor($cpuCores / 2))
+    }
+    Write-Host "Threads: $Threads" -ForegroundColor Gray
 }
 
 if ($GpuLayers -eq -1) {
     if ($hasGpu -and -not $CpuOnly) {
-        # Tentar usar algumas camadas na GPU
-        $GpuLayers = 10
+        if ($gpuLayersDefault -gt 0) {
+            $GpuLayers = $gpuLayersDefault
+        } else {
+            $GpuLayers = 10
+        }
         Write-Host "GPU Layers: $GpuLayers" -ForegroundColor Gray
     } else {
         $GpuLayers = 0
         Write-Host "Modo CPU-only: GPU Layers = 0" -ForegroundColor Yellow
     }
+}
+
+if ($CpuOnly) {
+    $GpuLayers = 0
 }
 
 # Encontrar executável llama.cpp
@@ -164,9 +256,10 @@ $cmdArgs = @(
     "-m", "`"$modelPath`"",
     "--threads", $Threads,
     "--ctx-size", $CtxSize,
-    "--temp", $defaultSettings.temperature,
-    "--top-p", $defaultSettings.top_p,
-    "--repeat-penalty", $defaultSettings.repeat_penalty,
+    "--temp", $temperature,
+    "--top-p", $topP,
+    "--top-k", $topK,
+    "--repeat-penalty", $repeatPenalty,
     "--jinja"
 )
 
@@ -174,6 +267,15 @@ if ($GpuLayers -gt 0) {
     $cmdArgs += "--n-gpu-layers", $GpuLayers
     # Offload de camadas MoE para CPU (economiza VRAM)
     $cmdArgs += "-ot", "`.ffn_.*_exps.=CPU"
+}
+
+if (-not [string]::IsNullOrEmpty($KvCache)) {
+    $cmdArgs += "--cache-type-k", $KvCache
+    $cmdArgs += "--cache-type-v", $KvCache
+}
+
+if ($FlashAttn) {
+    $cmdArgs += "--flash-attn", "on"
 }
 
 if (-not [string]::IsNullOrEmpty($Prompt)) {

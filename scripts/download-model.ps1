@@ -1,8 +1,8 @@
-# Script de Download de Modelo GLM-4.7 para Windows
+# Script de Download de Modelo Qwen3.6-27B para Windows
 # Baixa modelos quantizados do Hugging Face
 
 param(
-    [string]$Version = "Q4_K_S",
+    [string]$Version = "QWEN3_6_27B_Q4_K_M",
 
     [string]$OutputDir = "models",
 
@@ -15,6 +15,7 @@ $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = (Resolve-Path (Join-Path $scriptDir "..")).Path
+$repoModelsPath = Join-Path $repoRoot "models"
 
 if ([System.IO.Path]::IsPathRooted($OutputDir)) {
     $resolvedOutputDir = $OutputDir
@@ -24,7 +25,7 @@ else {
 }
 
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "Download Modelo GLM-4.7" -ForegroundColor Cyan
+Write-Host "Download Modelo Qwen3.6-27B" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -47,21 +48,147 @@ if ($List) {
     }
     Write-Host ""
     Write-Host "Exemplos:" -ForegroundColor Yellow
-    Write-Host "  .\scripts\download-model.ps1 -Version QWEN_CODER_14B_OLLAMA" -ForegroundColor White
+    Write-Host "  .\scripts\download-model.ps1 -Version QWEN3_6_27B_Q4_K_M" -ForegroundColor White
     Write-Host "  .\scripts\download-model.ps1 -All" -ForegroundColor White
     exit 0
 }
 
-function Ensure-HuggingFaceCli {
-    Write-Host "Verificando huggingface-cli..." -ForegroundColor Yellow
+function Resolve-PythonCommand {
+    $candidates = @(
+        @("python"),
+        @("py", "-3"),
+        @("python3")
+    )
+
+    foreach ($candidate in $candidates) {
+        $cmd = $candidate[0]
+        $args = @()
+        if ($candidate.Count -gt 1) {
+            $args = $candidate[1..($candidate.Count - 1)]
+        }
+
+        try {
+            & $cmd @args -c "import sys" 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                return [pscustomobject]@{ Command = $cmd; Args = $args }
+            }
+        }
+        catch {
+            continue
+        }
+    }
+
+    return $null
+}
+
+function Test-HuggingFaceHubImport {
+    param(
+        [Parameter(Mandatory = $true)]
+        $PythonInfo
+    )
+
+    $probe = "import huggingface_hub"
+
     try {
-        $hfVersion = huggingface-cli --version 2>&1
-        Write-Host "huggingface-cli encontrado!" -ForegroundColor Green
+        $pythonArgs = @()
+        if ($PythonInfo.Args) {
+            $pythonArgs = @($PythonInfo.Args)
+        }
+
+        & $PythonInfo.Command @pythonArgs -c $probe 2>$null | Out-Null
+        return ($LASTEXITCODE -eq 0)
     }
     catch {
-        Write-Host "huggingface-cli não encontrado. Instalando..." -ForegroundColor Yellow
-        pip install "huggingface-hub[cli]" --quiet
+        return $false
     }
+}
+
+function Ensure-HuggingFaceCli {
+    Write-Host "Verificando huggingface-cli..." -ForegroundColor Yellow
+
+    $script:PythonInfo = Resolve-PythonCommand
+    if (-not $script:PythonInfo) {
+        Write-Host "Python nao encontrado. Instale Python 3.10+." -ForegroundColor Red
+        exit 1
+    }
+
+    if (Get-Command huggingface-cli -ErrorAction SilentlyContinue) {
+        $script:HuggingFaceCliMode = "binary"
+        Write-Host "huggingface-cli encontrado!" -ForegroundColor Green
+        return
+    }
+
+    if (-not (Test-HuggingFaceHubImport -PythonInfo $script:PythonInfo)) {
+        Write-Host "huggingface-cli nao encontrado. Instalando..." -ForegroundColor Yellow
+        & $script:PythonInfo.Command @($script:PythonInfo.Args + @("-m", "pip", "install", "huggingface-hub", "hf-transfer")) | Out-Null
+    }
+
+    if (-not (Test-HuggingFaceHubImport -PythonInfo $script:PythonInfo)) {
+        Write-Host "huggingface-cli nao disponivel. Verifique a instalacao do huggingface-hub." -ForegroundColor Red
+        exit 1
+    }
+
+    $script:HuggingFaceCliMode = "python"
+    Write-Host "huggingface-cli encontrado!" -ForegroundColor Green
+}
+
+function Invoke-HuggingFaceDownload {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Repo,
+
+        [string]$File,
+
+        [Parameter(Mandatory = $true)]
+        [string]$TargetDir
+    )
+
+    if ($script:HuggingFaceCliMode -eq "binary") {
+        if ($File) {
+            & huggingface-cli download $Repo $File --local-dir $TargetDir --local-dir-use-symlinks false
+        }
+        else {
+            & huggingface-cli download $Repo --local-dir $TargetDir --local-dir-use-symlinks false
+        }
+        if ($LASTEXITCODE -ne 0) {
+            throw "huggingface-cli falhou com código $LASTEXITCODE"
+        }
+        return
+    }
+
+    $pythonArgs = @()
+    if ($script:PythonInfo.Args) {
+        $pythonArgs = @($script:PythonInfo.Args)
+    }
+
+    $fileArg = if ($File) { $File } else { "__NONE__" }
+    $scriptContent = @'
+import sys
+from huggingface_hub import hf_hub_download, snapshot_download
+
+repo = sys.argv[1]
+file_name = sys.argv[2]
+target_dir = sys.argv[3]
+
+if file_name == '__NONE__':
+    file_name = None
+
+if file_name:
+    hf_hub_download(
+        repo_id=repo,
+        filename=file_name,
+        local_dir=target_dir,
+        local_dir_use_symlinks=False,
+    )
+else:
+    snapshot_download(
+        repo_id=repo,
+        local_dir=target_dir,
+        local_dir_use_symlinks=False,
+    )
+'@
+
+    & $script:PythonInfo.Command @pythonArgs -c $scriptContent $Repo $fileArg $TargetDir
 }
 
 function Resolve-OllamaCommand {
@@ -104,6 +231,24 @@ function Ensure-Ollama {
         Write-Host "Instale com: winget install Ollama.Ollama" -ForegroundColor Yellow
         exit 1
     }
+
+    if (-not (Test-Path $repoModelsPath)) {
+        New-Item -ItemType Directory -Path $repoModelsPath | Out-Null
+    }
+
+    $currentUserPath = [Environment]::GetEnvironmentVariable("OLLAMA_MODELS", "User")
+    if ($currentUserPath -ne $repoModelsPath) {
+        [Environment]::SetEnvironmentVariable("OLLAMA_MODELS", $repoModelsPath, "User")
+        Write-Host "OLLAMA_MODELS (User) configurado para: $repoModelsPath" -ForegroundColor Green
+    }
+
+    $env:OLLAMA_MODELS = $repoModelsPath
+    Write-Host "OLLAMA_MODELS (sessão atual): $env:OLLAMA_MODELS" -ForegroundColor Gray
+
+    Get-Process "ollama", "ollama app" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 1
+    Start-Process -FilePath $script:OllamaCommand -ArgumentList "serve" -WindowStyle Hidden | Out-Null
+    Start-Sleep -Seconds 2
 }
 
 function Get-FreeSpaceGB {
@@ -210,12 +355,12 @@ foreach ($modelKey in $modelsToDownload) {
                     New-Item -ItemType Directory -Path $modelPath | Out-Null
                 }
 
-                huggingface-cli download $modelInfo.repo $modelInfo.file --local-dir $modelPath --local-dir-use-symlinks False
+                Invoke-HuggingFaceDownload -Repo $modelInfo.repo -File $modelInfo.file -TargetDir $modelPath
                 $downloaded += "$modelKey -> $modelPath"
             }
             elseif ($modelInfo.repo) {
                 Write-Host "Baixando de: $($modelInfo.repo)" -ForegroundColor Gray
-                huggingface-cli download $modelInfo.repo --local-dir $modelPath --local-dir-use-symlinks False
+                Invoke-HuggingFaceDownload -Repo $modelInfo.repo -TargetDir $modelPath
                 $downloaded += "$modelKey -> $modelPath"
             }
             else {
@@ -269,7 +414,6 @@ if ($failed.Count -gt 0) {
 
 Write-Host ""
 Write-Host "Próximos passos:" -ForegroundColor Yellow
-Write-Host "  - Liste os modelos locais do Ollama: ollama list" -ForegroundColor White
-Write-Host "  - Execute com Ollama: ollama run <tag>" -ForegroundColor White
-Write-Host "  - Execute GLM via GGUF: .\scripts\run-llamacpp.ps1" -ForegroundColor White
+Write-Host "  - Verifique os arquivos baixados em: .\models" -ForegroundColor White
+Write-Host "  - Execute Qwen3.6 via GGUF: .\scripts\run-llamacpp.ps1" -ForegroundColor White
 Write-Host ""
