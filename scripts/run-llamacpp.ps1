@@ -11,7 +11,15 @@ param(
     [string]$Prompt = "",
     [ValidateSet("", "q8_0", "q4_0", "q4_1", "q5_0")]
     [string]$KvCache = "",
-    [switch]$FlashAttn
+    [switch]$FlashAttn,
+
+    # Controle de thinking do Qwen3:
+    # full   = raciocinio completo (padrao, mais lento)
+    # medium = budget ~1000 tokens de raciocinio
+    # low    = budget ~300 tokens de raciocinio
+    # off    = sem raciocinio interno (mais rapido)
+    [ValidateSet("full", "medium", "low", "off")]
+    [string]$Thinking = "full"
 )
 
 $ErrorActionPreference = "Stop"
@@ -276,6 +284,13 @@ if (-not [string]::IsNullOrEmpty($KvCache)) {
 
 if ($FlashAttn) {
     $cmdArgs += "--flash-attn", "on"
+}
+
+switch ($Thinking) {
+    "off"    { $cmdArgs += "--no-thinking" }
+    "low"    { $cmdArgs += "-sp", "Think very briefly before answering, use at most 300 tokens of internal reasoning." }
+    "medium" { $cmdArgs += "-sp", "Think step by step but be concise, use at most 1000 tokens of internal reasoning." }
+    # "full" = padrao, nenhuma flag adicional
 }
 
 if (-not [string]::IsNullOrEmpty($Prompt)) {

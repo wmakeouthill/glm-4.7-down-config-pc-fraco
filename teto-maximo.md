@@ -4,6 +4,31 @@
 
 ---
 
+## Como a RTX 4060 entra no processo
+
+A placa de video nao tem "layers" proprias. O que ela tem e VRAM (8 GB de memoria
+de video) e CUDA cores (unidades de calculo paralelo).
+
+O parametro -GpuLayers diz ao llama.cpp: "carregue X layers do modelo dentro
+da VRAM e use os CUDA cores para processar essas layers". As layers que nao
+couberem ficam na RAM e sao processadas pela CPU - mais lento, mas funciona.
+
+Para a GPU ser usada, o llama.cpp precisa de dois componentes:
+- ggml-cuda.dll      : o backend que fala com os CUDA cores
+- cudart64_12.dll    : o runtime CUDA (DLLs da NVIDIA que ggml-cuda.dll depende)
+
+Se o cudart64_12.dll estiver ausente, o ggml-cuda.dll nao carrega e o programa
+cai silenciosamente para CPU sem dar erro claro. Foi exatamente o que aconteceu
+aqui: o setup baixou os executaveis mas nao o pacote cudart separado.
+
+O log correto com GPU ativa mostra:
+```
+load_backend: loaded CUDA backend from ggml-cuda.dll   <- deve aparecer isso
+load_backend: loaded CPU backend from ggml-cpu-haswell.dll
+```
+
+---
+
 ## Como a VRAM e consumida
 
 Ao rodar um modelo local, a VRAM e ocupada por tres coisas ao mesmo tempo:
@@ -101,13 +126,13 @@ Com q8_0, o KV cache de 32K cabe em ~1.1 GB -> margem suficiente durante uso nor
 
 ### 48K - KV q8_0 + Flash Attention
 
-Reduzido para 12 layers (~5.6 GB) porque 48K de contexto com q8_0
-consome ~1.6 GB de KV ao encher. Precisa de mais margem.
+13 layers e o maximo calculado: L = 7675 / (472 + 96) = 13.5 -> 13.
+12 layers deixava um layer preso na CPU sem necessidade.
 
 ```powershell
 .\scripts\run-llamacpp.ps1 `
     -ModelVersion QWEN3_6_27B_Q4_K_M `
-    -GpuLayers 12 `
+    -GpuLayers 13 `
     -Threads 6 `
     -CtxSize 49152 `
     -KvCache q8_0 `
@@ -131,13 +156,13 @@ Volta para 14 layers porque q4_0 corta o KV cache pela metade em relacao ao q8_0
 
 ### 96K - KV q4_0 + Flash Attention (teto absoluto)
 
-12 layers pela mesma logica do 48K q8_0: contexto gigante precisa de margem maior.
-96K com q4_0 = ~1.6 GB de KV ao encher completamente.
+Mesmo denominador do 48K q8_0 (ambos consomem 96 MiB de KV por layer):
+L = 7675 / (472 + 96) = 13.5 -> 13 layers. Corrigido de 12 para 13.
 
 ```powershell
 .\scripts\run-llamacpp.ps1 `
     -ModelVersion QWEN3_6_27B_Q4_K_M `
-    -GpuLayers 12 `
+    -GpuLayers 13 `
     -Threads 6 `
     -CtxSize 98304 `
     -KvCache q4_0 `
@@ -148,15 +173,21 @@ Volta para 14 layers porque q4_0 corta o KV cache pela metade em relacao ao q8_0
 
 ## Tabela comparativa
 
-| Preset  | Layers | Modelo GPU | KV cheio | Total+overhead | Margem |
-|---------|--------|-----------|---------|----------------|--------|
-| 32K q8  | 14     | ~6.6 GB   | ~1.1 GB | ~8.2 GB        | ok*    |
-| 48K q8  | 12     | ~5.6 GB   | ~1.6 GB | ~7.7 GB        | ok     |
-| 64K q4  | 14     | ~6.6 GB   | ~1.1 GB | ~8.2 GB        | ok*    |
-| 96K q4  | 12     | ~5.6 GB   | ~1.6 GB | ~7.7 GB        | ok     |
+| Preset  | Layers | Modelo GPU | KV cheio | Total+overhead | Margem   |
+|---------|--------|-----------|---------|----------------|----------|
+| 32K q8  | 14     | 6608 MiB  | 896 MiB | 8016 MiB       | 171 MiB  |
+| 48K q8  | 13     | 6136 MiB  | 1248 MiB| 7896 MiB       | 291 MiB  |
+| 64K q4  | 14     | 6608 MiB  | 896 MiB | 8016 MiB       | 171 MiB  |
+| 96K q4  | 13     | 6136 MiB  | 1248 MiB| 7896 MiB       | 291 MiB  |
+| fast-8k | 15     | 7080 MiB  | 240 MiB | 7832 MiB       | 355 MiB  |
+| fast-16k| 14     | 6608 MiB  | 448 MiB | 7568 MiB       | 619 MiB  |
 
-*O KV cache so chega ao maximo se voce usar o contexto inteiro.
+*A margem conta o KV cache ao encher o contexto inteiro.
 Na pratica conversas normais usam bem menos tokens.
+
+Formula usada:
+  L_max = VRAM_disponivel / (472 MiB/layer + ctx x bytes_KV/layer)
+  VRAM disponivel = 8187 - 512 (overhead) = 7675 MiB
 
 ---
 
@@ -173,7 +204,37 @@ Soma deve ficar abaixo de 7.5 GB com folga de pelo menos 0.5 GB.
 
 ---
 
-## Se der OOM
+## O que fizemos para evitar OOM
+
+OOM (Out of Memory) acontece quando a soma de tudo que esta na VRAM ultrapassa
+os 8 GB fisicos da placa. Tomamos quatro decisoes especificas para evitar isso:
+
+**1. Desconto do overhead do Windows**
+Nao calculamos com os 8 GB cheios. Descontamos ~0.5 GB que o Windows/driver
+sempre reserva para o desktop e WDDM. Trabalhar com 7.5 GB como teto real.
+
+**2. Layers conservadoras (nao encher a VRAM so com o modelo)**
+A primeira versao dos comandos usava 16 layers (~7.5 GB) sem margem para o
+KV cache crescer. Corrigimos para 12-14 layers (~5.6-6.6 GB), deixando
+0.9-1.3 GB livres para o KV cache durante a conversa.
+
+**3. KV cache quantizado (-KvCache q8_0 / q4_0)**
+O KV cache em fp16 (padrao) para 96K de contexto ocuparia ~6.9 GB sozinho -
+mais do que a margem disponivel. Com q4_0 isso cai para ~1.6 GB.
+Sem essa tecnica, contextos acima de 16K seriam inviavies nessa placa.
+
+**4. Flash Attention (-FlashAttn)**
+Durante o calculo de atencao, o metodo padrao materializa uma matriz gigante
+na VRAM (cresce com o quadrado do contexto). Flash Attention faz o mesmo
+calculo em blocos pequenos, evitando picos de uso que causariam OOM momentaneo
+mesmo com espaco medio suficiente.
+
+A combinacao das quatro medidas permite contextos de 96K em uma GPU de 8 GB
+que, no calculo ingenue, so comportaria ~20K tokens.
+
+---
+
+## Se der OOM mesmo assim
 
 Reduza -GpuLayers em 2 e tente de novo. O modelo continua funcionando,
 so mais lento (as layers extras rodam na RAM pelo CPU).
