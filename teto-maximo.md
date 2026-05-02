@@ -14,6 +14,7 @@ da VRAM e use os CUDA cores para processar essas layers". As layers que nao
 couberem ficam na RAM e sao processadas pela CPU - mais lento, mas funciona.
 
 Para a GPU ser usada, o llama.cpp precisa de dois componentes:
+
 - ggml-cuda.dll      : o backend que fala com os CUDA cores
 - cudart64_12.dll    : o runtime CUDA (DLLs da NVIDIA que ggml-cuda.dll depende)
 
@@ -22,6 +23,7 @@ cai silenciosamente para CPU sem dar erro claro. Foi exatamente o que aconteceu
 aqui: o setup baixou os executaveis mas nao o pacote cudart separado.
 
 O log correto com GPU ativa mostra:
+
 ```
 load_backend: loaded CUDA backend from ggml-cuda.dll   <- deve aparecer isso
 load_backend: loaded CPU backend from ggml-cpu-haswell.dll
@@ -152,6 +154,28 @@ Volta para 14 layers porque q4_0 corta o KV cache pela metade em relacao ao q8_0
     -CtxSize 65536 `
     -KvCache q4_0 `
     -FlashAttn
+```
+
+```powershell
+.\scripts\run-llamacpp.ps1 `
+    -ModelVersion QWEN3_6_27B_Q4_K_M `
+    -GpuLayers 14 `
+    -Threads 6 `
+    -CtxSize 65536 `
+    -KvCache q4_0 `
+    -FlashAttn `
+    -Thinking low
+```
+
+```powershell
+.\scripts\run-llamacpp.ps1 `
+    -ModelVersion QWEN3_6_27B_Q4_K_M `
+    -GpuLayers 14 `
+    -Threads 6 `
+    -CtxSize 65536 `
+    -KvCache q4_0 `
+    -FlashAttn `
+    -Thinking medium
 ```
 
 ### 96K - KV q4_0 + Flash Attention (teto absoluto)

@@ -287,9 +287,18 @@ if ($FlashAttn) {
 }
 
 switch ($Thinking) {
-    "off"    { $cmdArgs += "--no-thinking" }
-    "low"    { $cmdArgs += "-sp", "Think very briefly before answering, use at most 300 tokens of internal reasoning." }
-    "medium" { $cmdArgs += "-sp", "Think step by step but be concise, use at most 1000 tokens of internal reasoning." }
+    "off" { $cmdArgs += "--no-thinking" }
+    { $_ -in "low", "medium" } {
+        $spContent = if ($Thinking -eq "low") {
+            "Think very briefly before answering, use at most 300 tokens of internal reasoning."
+        } else {
+            "Think step by step but be concise, use at most 1000 tokens of internal reasoning."
+        }
+        # -sp espera arquivo, nao string direta
+        $spFile = Join-Path $PSScriptRoot "llama-sp-tmp.txt"
+        $spContent | Out-File -FilePath $spFile -Encoding utf8 -NoNewline
+        $cmdArgs += "-sp", $spFile
+    }
     # "full" = padrao, nenhuma flag adicional
 }
 
