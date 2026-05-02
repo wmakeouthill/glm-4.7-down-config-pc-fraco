@@ -1,0 +1,1 @@
+﻿Think very briefly before answering, use at most 300 tokens of internal reasoning.

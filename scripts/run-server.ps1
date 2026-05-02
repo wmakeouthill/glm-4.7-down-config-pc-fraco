@@ -159,9 +159,10 @@ if ($FlashAttn) {
 }
 
 switch ($Thinking) {
-    "off"    { $cmdArgs += "--no-thinking" }
-    "low"    { $cmdArgs += "-sp", "Think very briefly before answering, use at most 300 tokens of internal reasoning." }
-    "medium" { $cmdArgs += "-sp", "Think step by step but be concise, use at most 1000 tokens of internal reasoning." }
+    "off"    { $cmdArgs += "--reasoning", "off" }
+    "low"    { $cmdArgs += "--reasoning-budget", 300 }
+    "medium" { $cmdArgs += "--reasoning-budget", 1000 }
+    # "full" = padrao: reasoning ilimitado, nenhuma flag adicional
 }
 
 # Resumo
