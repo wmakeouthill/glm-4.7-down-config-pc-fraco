@@ -129,7 +129,7 @@ if ([string]::IsNullOrEmpty($ModelVersion)) {
 }
 
 if ([string]::IsNullOrEmpty($ModelVersion)) {
-    $preferredOrder = @("QWEN3_6_27B_Q4_K_M", "QWEN3_6_27B_Q8_0")
+    $preferredOrder = @("QWEN3_8B_Q5_K_M", "QWEN3_6_35B_A3B_Q4_K_M")
     foreach ($candidate in $preferredOrder) {
         $candidatePath = Resolve-ModelPath -ModelKey $candidate
         if ($candidatePath) {

@@ -195,6 +195,124 @@ L = 7675 / (472 + 96) = 13.5 -> 13 layers. Corrigido de 12 para 13.
 
 ---
 
+## Comandos - DeepSeek-R1-Distill-Qwen-7B Q5_K_M (5.44 GB)
+
+Modelo 100% na GPU. 28 layers, ~194 MiB por layer.
+VRAM disponivel para KV = 7675 - 5440 = 2235 MiB.
+
+Formula: teto_tokens = VRAM_KV / (layers x bytes_KV/token)
+  q8_0: 2235 MiB / (28 x 2 KB) = ~40960 tokens -> 40K
+  q4_0: 2235 MiB / (28 x 1 KB) = ~81920 tokens -> 80K
+
+### 32K - KV q8_0 + Flash Attention (recomendado)
+
+```powershell
+.\scripts\run-llamacpp.ps1 `
+    -ModelVersion DEEPSEEK_R1_DISTILL_7B_Q5_K_M `
+    -GpuLayers 9999 `
+    -Threads 6 `
+    -CtxSize 32768 `
+    -KvCache q8_0 `
+    -FlashAttn
+```
+
+### 40K - KV q8_0 + Flash Attention (teto q8_0)
+
+```powershell
+.\scripts\run-llamacpp.ps1 `
+    -ModelVersion DEEPSEEK_R1_DISTILL_7B_Q5_K_M `
+    -GpuLayers 9999 `
+    -Threads 6 `
+    -CtxSize 40960 `
+    -KvCache q8_0 `
+    -FlashAttn
+```
+
+### 64K - KV q4_0 + Flash Attention
+
+```powershell
+.\scripts\run-llamacpp.ps1 `
+    -ModelVersion DEEPSEEK_R1_DISTILL_7B_Q5_K_M `
+    -GpuLayers 9999 `
+    -Threads 6 `
+    -CtxSize 65536 `
+    -KvCache q4_0 `
+    -FlashAttn
+```
+
+### 80K - KV q4_0 + Flash Attention (teto absoluto)
+
+```powershell
+.\scripts\run-llamacpp.ps1 `
+    -ModelVersion DEEPSEEK_R1_DISTILL_7B_Q5_K_M `
+    -GpuLayers 9999 `
+    -Threads 6 `
+    -CtxSize 81920 `
+    -KvCache q4_0 `
+    -FlashAttn
+```
+
+---
+
+## Comandos - GLM-4-9B-chat Q4_K_M (6.25 GB)
+
+Modelo 100% na GPU. 40 layers, ~156 MiB por layer.
+VRAM disponivel para KV = 7675 - 6250 = 1425 MiB.
+
+Formula:
+  q8_0: 1425 MiB / (40 x 2 KB) = ~18350 tokens -> 18K
+  q4_0: 1425 MiB / (40 x 1 KB) = ~36700 tokens -> 36K
+
+### 16K - KV q8_0 + Flash Attention (recomendado)
+
+```powershell
+.\scripts\run-llamacpp.ps1 `
+    -ModelVersion GLM_4_9B_Q4_K_M `
+    -GpuLayers 9999 `
+    -Threads 6 `
+    -CtxSize 16384 `
+    -KvCache q8_0 `
+    -FlashAttn
+```
+
+### 18K - KV q8_0 + Flash Attention (teto q8_0)
+
+```powershell
+.\scripts\run-llamacpp.ps1 `
+    -ModelVersion GLM_4_9B_Q4_K_M `
+    -GpuLayers 9999 `
+    -Threads 6 `
+    -CtxSize 18432 `
+    -KvCache q8_0 `
+    -FlashAttn
+```
+
+### 32K - KV q4_0 + Flash Attention
+
+```powershell
+.\scripts\run-llamacpp.ps1 `
+    -ModelVersion GLM_4_9B_Q4_K_M `
+    -GpuLayers 9999 `
+    -Threads 6 `
+    -CtxSize 32768 `
+    -KvCache q4_0 `
+    -FlashAttn
+```
+
+### 36K - KV q4_0 + Flash Attention (teto absoluto)
+
+```powershell
+.\scripts\run-llamacpp.ps1 `
+    -ModelVersion GLM_4_9B_Q4_K_M `
+    -GpuLayers 9999 `
+    -Threads 6 `
+    -CtxSize 36864 `
+    -KvCache q4_0 `
+    -FlashAttn
+```
+
+---
+
 ## Tabela comparativa
 
 | Preset  | Layers | Modelo GPU | KV cheio | Total+overhead | Margem   |

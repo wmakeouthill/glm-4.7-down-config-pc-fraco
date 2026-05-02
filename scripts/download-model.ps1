@@ -104,32 +104,44 @@ function Test-HuggingFaceHubImport {
 }
 
 function Ensure-HuggingFaceCli {
-    Write-Host "Verificando huggingface-cli..." -ForegroundColor Yellow
+    Write-Host "Verificando hf / huggingface-cli..." -ForegroundColor Yellow
 
     $script:PythonInfo = Resolve-PythonCommand
-    if (-not $script:PythonInfo) {
-        Write-Host "Python nao encontrado. Instale Python 3.10+." -ForegroundColor Red
-        exit 1
+
+    # Novo CLI (hf) tem prioridade
+    if (Get-Command hf -ErrorAction SilentlyContinue) {
+        $script:HuggingFaceCliMode = "binary"
+        $script:HfBinary = "hf"
+        Write-Host "hf encontrado!" -ForegroundColor Green
+        return
     }
 
+    # Fallback: CLI legado
     if (Get-Command huggingface-cli -ErrorAction SilentlyContinue) {
         $script:HuggingFaceCliMode = "binary"
+        $script:HfBinary = "huggingface-cli"
         Write-Host "huggingface-cli encontrado!" -ForegroundColor Green
         return
     }
 
+    # Fallback: Python direto
+    if (-not $script:PythonInfo) {
+        Write-Host "Python nao encontrado e nem hf/huggingface-cli. Instale Python 3.10+ ou 'pip install huggingface-hub'." -ForegroundColor Red
+        exit 1
+    }
+
     if (-not (Test-HuggingFaceHubImport -PythonInfo $script:PythonInfo)) {
-        Write-Host "huggingface-cli nao encontrado. Instalando..." -ForegroundColor Yellow
+        Write-Host "hf nao encontrado. Instalando huggingface-hub..." -ForegroundColor Yellow
         & $script:PythonInfo.Command @($script:PythonInfo.Args + @("-m", "pip", "install", "huggingface-hub", "hf-transfer")) | Out-Null
     }
 
     if (-not (Test-HuggingFaceHubImport -PythonInfo $script:PythonInfo)) {
-        Write-Host "huggingface-cli nao disponivel. Verifique a instalacao do huggingface-hub." -ForegroundColor Red
+        Write-Host "huggingface_hub nao disponivel. Verifique a instalacao." -ForegroundColor Red
         exit 1
     }
 
     $script:HuggingFaceCliMode = "python"
-    Write-Host "huggingface-cli encontrado!" -ForegroundColor Green
+    Write-Host "huggingface_hub (Python) encontrado!" -ForegroundColor Green
 }
 
 function Invoke-HuggingFaceDownload {
@@ -144,14 +156,16 @@ function Invoke-HuggingFaceDownload {
     )
 
     if ($script:HuggingFaceCliMode -eq "binary") {
-        if ($File) {
-            & huggingface-cli download $Repo $File --local-dir $TargetDir --local-dir-use-symlinks false
+        $dlArgs = @("download", $Repo)
+        if ($File) { $dlArgs += $File }
+        $dlArgs += "--local-dir", $TargetDir
+        # huggingface-cli legado aceita --local-dir-use-symlinks, hf nao aceita
+        if ($script:HfBinary -eq "huggingface-cli") {
+            $dlArgs += "--local-dir-use-symlinks", "false"
         }
-        else {
-            & huggingface-cli download $Repo --local-dir $TargetDir --local-dir-use-symlinks false
-        }
+        & $script:HfBinary @dlArgs
         if ($LASTEXITCODE -ne 0) {
-            throw "huggingface-cli falhou com código $LASTEXITCODE"
+            throw "$($script:HfBinary) falhou com código $LASTEXITCODE"
         }
         return
     }
@@ -345,7 +359,8 @@ foreach ($modelKey in $modelsToDownload) {
             }
 
             $modelPath = Join-Path $resolvedOutputDir $modelInfo.name
-            Write-Host "Iniciando download com huggingface-cli..." -ForegroundColor Yellow
+            $cliName = if ($script:HuggingFaceCliMode -eq "binary") { $script:HfBinary } else { "huggingface_hub (Python)" }
+            Write-Host "Iniciando download com $cliName..." -ForegroundColor Yellow
 
             if ($modelInfo.repo -and $modelInfo.file) {
                 Write-Host "Baixando arquivo: $($modelInfo.file)" -ForegroundColor Gray

@@ -1,24 +1,44 @@
 {
   "models": {
-    "QWEN3_6_27B_Q4_K_M": {
+    "QWEN3_8B_Q5_K_M": {
       "source": "huggingface",
-      "name": "Qwen3.6-27B-Q4_K_M",
-      "repo": "unsloth/Qwen3.6-27B-GGUF",
-      "file": "Qwen3.6-27B-Q4_K_M.gguf",
-      "size_gb": 17,
-      "min_ram_gb": 32,
+      "name": "Qwen3-8B-Q5_K_M",
+      "repo": "unsloth/Qwen3-8B-GGUF",
+      "file": "Qwen3-8B-Q5_K_M.gguf",
+      "size_gb": 5.85,
+      "min_ram_gb": 8,
       "min_vram_gb": 8,
-      "description": "4-bit balanceado para codigo e uso geral"
+      "description": "100% GPU na RTX 4060 - codificacao e uso geral, 15-25 t/s estimado"
     },
-    "QWEN3_6_27B_Q8_0": {
+    "QWEN3_6_35B_A3B_Q4_K_M": {
       "source": "huggingface",
-      "name": "Qwen3.6-27B-Q8_0",
-      "repo": "unsloth/Qwen3.6-27B-GGUF",
-      "file": "Qwen3.6-27B-Q8_0.gguf",
-      "size_gb": 29,
-      "min_ram_gb": 48,
-      "min_vram_gb": 12,
-      "description": "8-bit para maior fidelidade, exige mais RAM/VRAM"
+      "name": "Qwen3.6-35B-A3B-Q4_K_M",
+      "repo": "unsloth/Qwen3.6-35B-A3B-GGUF",
+      "file": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "size_gb": 22.1,
+      "min_ram_gb": 32,
+      "min_vram_gb": 4,
+      "description": "MoE 35B total / 3B ativos - atencao na GPU, experts na RAM"
+    },
+    "DEEPSEEK_R1_DISTILL_7B_Q5_K_M": {
+      "source": "huggingface",
+      "name": "DeepSeek-R1-Distill-Qwen-7B-Q5_K_M",
+      "repo": "unsloth/DeepSeek-R1-Distill-Qwen-7B-GGUF",
+      "file": "DeepSeek-R1-Distill-Qwen-7B-Q5_K_M.gguf",
+      "size_gb": 5.44,
+      "min_ram_gb": 8,
+      "min_vram_gb": 8,
+      "description": "100% GPU na RTX 4060 - raciocinio/coding destilado do R1, 15-25 t/s estimado"
+    },
+    "GLM_4_9B_Q4_K_M": {
+      "source": "huggingface",
+      "name": "glm-4-9b-chat-Q4_K_M",
+      "repo": "bartowski/glm-4-9b-chat-GGUF",
+      "file": "glm-4-9b-chat-Q4_K_M.gguf",
+      "size_gb": 6.25,
+      "min_ram_gb": 8,
+      "min_vram_gb": 8,
+      "description": "100% GPU na RTX 4060 - chat multilingue GLM-4, born to serve"
     }
   },
   "default_settings": {
